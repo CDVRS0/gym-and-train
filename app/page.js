@@ -48,7 +48,9 @@ import {
   Zap,
 } from 'lucide-react';
 
-import GymCloudSync from '@/components/GymCloudSync';
+import GymCloudSync from '../components/GymCloudSync';
+import { useGymCloudSync } from '../hooks/useGymCloudSync';
+import { GymSyncStatus } from '../components/GymCloudSync';
 
 const STORAGE = 'gym-training-os-v8';
 const WATER_GOAL = 2500;
@@ -1723,7 +1725,7 @@ function Progress({ state, history, onDeleteHistory }) {
   );
 }
 
-function SettingsPage({ state, setState, onReset }) {
+function SettingsPage({ state, setState, syncStatus, onReset, }) {
   return (
     <div className="page-stack">
       <SectionHeading
@@ -1801,6 +1803,7 @@ function SettingsPage({ state, setState, onReset }) {
         </div>
 
         <GymCloudSync state={state} />
+        <GymSyncStatus status={syncStatus} />
       </section>
 
       <section className="panel danger-panel">
@@ -1865,6 +1868,16 @@ export default function App() {
   const [sessionClock, setSessionClock] = useState(Date.now());
   const [confirmReset, setConfirmReset] = useState(false);
   const [notice, setNotice] = useState('');
+  const {
+  user: cloudUser,
+  syncStatus,
+  conflict,
+  resolveConflict,
+} = useGymCloudSync({
+  state,
+  setState,
+  loaded,
+});
 
 
   useEffect(() => {
@@ -2169,14 +2182,15 @@ export default function App() {
 
 
     if (tab === 'Settings') {
-      return (
-        <SettingsPage
-          state={state}
-          setState={setState}
-          onReset={() => setConfirmReset(true)}
-        />
-      );
-    }
+  return (
+    <SettingsPage
+      state={state}
+      setState={setState}
+      syncStatus={syncStatus}
+      onReset={() => setConfirmReset(true)}
+    />
+  );
+}
 
 
     return (

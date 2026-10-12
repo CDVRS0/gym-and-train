@@ -238,3 +238,24 @@ export default function GymCloudSync({ state }) {
     </div>
   );
 }
+export function GymSyncStatus({ status }) {
+  const labels = {
+    loading: 'Synchronising…',
+    synced: 'All changes saved',
+    offline: 'Offline — saving locally',
+    error: 'Sync failed — check your connection',
+    'needs-decision': 'Choose which data to keep',
+  };
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+    >
+      <p className="text-sm font-medium text-white">
+        {labels[status] ?? 'Sync status unknown'}
+      </p>
+    </div>
+  );
+}

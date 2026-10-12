@@ -48,6 +48,7 @@ import {
   Zap,
 } from 'lucide-react';
 
+import GymCloudSync from '@/components/GymCloudSync';
 
 const STORAGE = 'gym-training-os-v8';
 const WATER_GOAL = 2500;
@@ -1722,12 +1723,14 @@ function Progress({ state, history, onDeleteHistory }) {
   );
 }
 
-
 function SettingsPage({ state, setState, onReset }) {
   return (
     <div className="page-stack">
-      <SectionHeading eyebrow="PREFERENCES" title="Settings" subtitle="Configure your training units, hydration goal and stored data." />
-
+      <SectionHeading
+        eyebrow="PREFERENCES"
+        title="Settings"
+        subtitle="Configure your training units, hydration goal and stored data."
+      />
 
       <section className="panel settings-panel">
         <div className="settings-row">
@@ -1735,59 +1738,105 @@ function SettingsPage({ state, setState, onReset }) {
             <strong>Weight unit</strong>
             <p>Used throughout your strength training logs.</p>
           </div>
+
           <select
             value={state.settings.weightUnit}
-            onChange={(event) => setState((current) => ({
-              ...current,
-              settings: { ...current.settings, weightUnit: event.target.value },
-            }))}
+            onChange={(event) =>
+              setState((current) => ({
+                ...current,
+                settings: {
+                  ...current.settings,
+                  weightUnit: event.target.value,
+                },
+              }))
+            }
           >
             <option value="kg">Kilograms (kg)</option>
             <option value="lb">Pounds (lb)</option>
           </select>
         </div>
 
-
         <div className="settings-row">
           <div>
             <strong>Daily hydration goal</strong>
             <p>Set your target water intake in millilitres.</p>
           </div>
+
           <input
             type="number"
             min="250"
             max="10000"
             step="250"
             value={state.settings.waterGoal}
-            onChange={(event) => setState((current) => ({
-              ...current,
-              settings: {
-                ...current.settings,
-                waterGoal: Math.max(250, safeNumber(event.target.value, WATER_GOAL)),
-              },
-            }))}
+            onChange={(event) =>
+              setState((current) => ({
+                ...current,
+                settings: {
+                  ...current.settings,
+                  waterGoal: Math.max(
+                    250,
+                    safeNumber(event.target.value, WATER_GOAL)
+                  ),
+                },
+              }))
+            }
           />
         </div>
       </section>
 
+      {/* CDVRS AI cloud integration */}
+      <section className="panel">
+        <div className="panel-heading">
+          <div className="panel-icon">
+            <ShieldCheck size={19} />
+          </div>
+
+          <div>
+            <h3>CDVRS AI connection</h3>
+            <p>
+              Synchronise your training data with your
+              CDVRS AI Supabase account.
+            </p>
+          </div>
+        </div>
+
+        <GymCloudSync state={state} />
+      </section>
 
       <section className="panel danger-panel">
         <div className="panel-heading">
-          <div className="panel-icon danger-icon"><AlertCircle size={19} /></div>
+          <div className="panel-icon danger-icon">
+            <AlertCircle size={19} />
+          </div>
+
           <div>
             <h3>Reset training data</h3>
-            <p>Delete locally stored workouts, logs, hydration and settings.</p>
+            <p>
+              Delete locally stored workouts, logs,
+              hydration and settings.
+            </p>
           </div>
         </div>
-        <button type="button" className="button button-danger" onClick={onReset}>
-          <Trash2 size={16} /> Reset all data
+
+        <button
+          type="button"
+          className="button button-danger"
+          onClick={onReset}
+        >
+          <Trash2 size={16} />
+          Reset all data
         </button>
       </section>
 
-
       <div className="privacy-note">
         <ShieldCheck size={17} />
-        <span>Your training data is stored in this browser on this device. It is not automatically synced to an account or another device.</span>
+
+        <span>
+          Your training data is stored locally on this
+          device unless you choose to synchronise it
+          with CDVRS AI. Cloud synchronisation requires
+          authentication.
+        </span>
       </div>
     </div>
   );

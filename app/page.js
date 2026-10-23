@@ -267,6 +267,42 @@ function convertWeightUnit(state, unit) {
   };
 }
 
+// Keep duration in minutes in stored logs so existing history remains compatible.
+function parseCardioDuration(value) {
+  const text = String(value).trim();
+  if (!/^\d+:([0-5]\d)(?::([0-5]\d))?$/.test(text)) return null;
+  const parts = text.split(':').map(Number);
+  const seconds = parts.length === 3
+    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+    : parts[0] * 60 + parts[1];
+  return Number.isSafeInteger(seconds) && seconds > 0 ? seconds / 60 : null;
+}
+
+function formatCardioTime(minutes) {
+  const total = Math.max(0, Math.round(safeNumber(minutes) * 60));
+  const seconds = String(total % 60).padStart(2, '0');
+  const mins = Math.floor(total / 60);
+  return mins >= 60 ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}:${seconds}` : `${mins}:${seconds}`;
+}
+
+function cardioActivity(log) {
+  return log.activity || 'Run';
+}
+
+function cardioSession(entry) {
+  return {
+    id: entry.id,
+    date: entry.date,
+    type: cardioActivity(entry) === 'Run' ? 'run' : 'cardio',
+    name: `${entry.environment ? `${entry.environment} ` : ''}${cardioActivity(entry)}`,
+    duration: Math.round(safeNumber(entry.duration) * 60),
+  };
+}
+
+function cardioCalories(logs) {
+  return logs.reduce((total, log) => total + Math.max(0, safeNumber(log.calories)), 0);
+}
+
 function formatPace(minutes, km) {
   const seconds = Math.round(safeNumber(minutes) * 60 / Math.max(0.001, safeNumber(km)));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -621,7 +657,8 @@ function getRecovery(state) {
     const duration = Math.max(0, safeNumber(log.duration)); // Run log durations are minutes.
     const effort = String(log.intensity || 'MODERATE').toUpperCase();
     const factor = effort === 'HARD' ? 1.5 : effort === 'EASY' ? 0.75 : 1;
-    return sum + Math.max(duration, distance * 6) * factor;
+    const distanceLoad = ['Run', 'Walk'].includes(cardioActivity(log)) ? distance * 6 : 0;
+    return sum + Math.max(duration, distanceLoad) * factor;
   }, 0);
 
   const lowerBodyGymSessions = lowerBodyWorkoutKeys.size;
@@ -1252,7 +1289,7 @@ function ReadinessCard({ recovery, state, setState }) {
 
       <div className="load-breakdown">
         <div><span>7-day basketball load</span><strong>{recovery.basketballSessions ? recovery.basketballLoad : 'No sessions logged'}</strong></div>
-        <div><span>7-day running load</span><strong>{recovery.runningSessions ? recovery.runningLoad : 'No runs logged'}</strong></div>
+        <div><span>7-day cardio load</span><strong>{recovery.runningSessions ? recovery.runningLoad : 'No cardio logged'}</strong></div>
         <div><span>7-day gym sessions</span><strong>{recovery.gymSessions}</strong></div>
         <div><span>7-day lower-body sessions</span><strong>{recovery.lowerBodyGymSessions}</strong></div>
       </div>
@@ -1275,110 +1312,117 @@ function ReadinessCard({ recovery, state, setState }) {
 
 function Cardio({ onSave, logs, onDelete }) {
   const [runDate, setRunDate] = useState(today);
+  const [activity, setActivity] = useState('Run');
+  const [environment, setEnvironment] = useState('Outdoor');
   const [distance, setDistance] = useState('');
   const [duration, setDuration] = useState('');
+  const [calories, setCalories] = useState('');
   const [intensity, setIntensity] = useState('Moderate');
   const [notes, setNotes] = useState('');
-
+  const [error, setError] = useState('');
+  const needsDistance = ['Run', 'Walk', 'Bike'].includes(activity);
+  const weeklyLogs = logs.filter((log) => log.date >= dateKey(getWeekStart()) && log.date <= today());
+  const caloriesLogged = logs.filter((log) => log.calories != null).length;
 
   const submit = (event) => {
     event.preventDefault();
-
-
-    if (safeNumber(distance) <= 0 || safeNumber(duration) <= 0 || !runDate || runDate > today()) return;
-
-
+    const minutes = parseCardioDuration(duration);
+    if (minutes === null) {
+      setError('Enter time as minutes:seconds (20:02) or hours:minutes:seconds (1:20:02). Seconds must be 00–59.');
+      return;
+    }
+    if ((needsDistance || distance !== '') && (!Number.isFinite(Number(distance)) || Number(distance) <= 0)) {
+      setError('Enter a distance greater than zero, for example 3.66 km.');
+      return;
+    }
+    if (calories !== '' && (!Number.isInteger(Number(calories)) || Number(calories) < 0)) {
+      setError('Calories must be a whole number of zero or more, or left blank.');
+      return;
+    }
+    if (!runDate || runDate > today()) {
+      setError('Choose today or an earlier date.');
+      return;
+    }
     onSave({
-      id: makeId(),
-      date: runDate,
-      createdAt: new Date().toISOString(),
-      distance: safeNumber(distance),
-      duration: safeNumber(duration),
-      intensity,
-      notes: notes.trim(),
+      id: makeId(), date: runDate, createdAt: new Date().toISOString(),
+      activity, environment,
+      distance: distance === '' ? null : Number(distance),
+      duration: minutes,
+      calories: calories === '' ? null : Number(calories),
+      intensity, notes: notes.trim(),
     });
-
-
     setDistance('');
     setDuration('');
+    setCalories('');
     setNotes('');
+    setError('');
   };
-
 
   return (
     <div className="page-stack">
-      <SectionHeading
-        eyebrow="ENDURANCE"
-        title="Running & cardio"
-        subtitle="Log your distance, time and intensity to track your weekly conditioning."
-      />
-
-
+      <SectionHeading eyebrow="ENDURANCE" title="Cardio" subtitle="Track runs, walks, rides and gym cardio with precise distance, time and calories." />
       <form className="panel cardio-form" onSubmit={submit}>
         <div className="panel-heading">
           <div className="panel-icon"><Footprints size={20} /></div>
-          <div>
-            <h3>Log a run</h3>
-            <p>Record a completed session</p>
-          </div>
+          <div><h3>Log cardio</h3><p>Record a completed session</p></div>
         </div>
-
-
         <div className="form-grid">
-          <label>Run date<input aria-label="Run date" type="date" required max={today()} value={runDate} onChange={(event) => setRunDate(event.target.value)} /></label>
-          <label>
-            Distance (km)
-            <input type="number" min="0.1" step="0.1" required value={distance} onChange={(event) => setDistance(event.target.value)} placeholder="e.g. 5.0" />
-          </label>
-          <label>
-            Duration (minutes)
-            <input type="number" min="0.1" step="0.1" required value={duration} onChange={(event) => setDuration(event.target.value)} placeholder="e.g. 28" />
-          </label>
-          <label>
-            Intensity
-            <select value={intensity} onChange={(event) => setIntensity(event.target.value)}>
-              <option>Easy</option>
-              <option>Moderate</option>
-              <option>Hard</option>
+          <label>Activity
+            <select value={activity} onChange={(event) => setActivity(event.target.value)}>
+              {['Run', 'Walk', 'Bike', 'Stairmaster', 'Elliptical', 'Rowing', 'Other'].map((name) => <option key={name}>{name}</option>)}
             </select>
           </label>
-          <label>
-            Notes (optional)
-            <input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Route, pace or how you felt" />
+          <label>Setting
+            <select value={environment} onChange={(event) => setEnvironment(event.target.value)}>
+              <option>Outdoor</option><option>Indoor</option>
+            </select>
           </label>
+          <label>Activity date<input type="date" required max={today()} value={runDate} onChange={(event) => setRunDate(event.target.value)} /></label>
+          <label>Distance (km){!needsDistance && ' — optional'}
+            <input aria-label="Distance (km)" type="number" min="0.01" step="0.01" required={needsDistance} value={distance} onChange={(event) => setDistance(event.target.value)} placeholder="e.g. 3.66" />
+          </label>
+          <label>Time (mm:ss or hh:mm:ss)
+            <input type="text" required value={duration} onChange={(event) => setDuration(event.target.value)} placeholder="e.g. 20:02" aria-describedby="cardio-time-help" />
+            <small id="cardio-time-help">20:02 = 20 minutes, 2 seconds</small>
+          </label>
+          <label>Calories burned (kcal) — optional
+            <input aria-label="Calories burned (kcal)" type="number" min="0" step="1" value={calories} onChange={(event) => setCalories(event.target.value)} placeholder="From your watch or machine" />
+          </label>
+          <label>Intensity
+            <select value={intensity} onChange={(event) => setIntensity(event.target.value)}><option>Easy</option><option>Moderate</option><option>Hard</option></select>
+          </label>
+          <label>Notes (optional)<input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Route, resistance, incline or how you felt" /></label>
         </div>
-
-
-        <button type="submit" className="button button-primary">
-          <Plus size={17} /> Save run
-        </button>
+        {error && <p className="save-error" role="alert">{error}</p>}
+        <button type="submit" className="button button-primary"><Plus size={17} /> Save cardio</button>
       </form>
-
-
       <div className="stats-grid">
-        <StatCard label="Total distance" value={`${logs.reduce((sum, log) => sum + safeNumber(log.distance), 0).toFixed(1)} km`} icon={Footprints} />
-        <StatCard label="Total time" value={`${logs.reduce((sum, log) => sum + safeNumber(log.duration), 0)} min`} icon={Clock} />
-        <StatCard label="Runs logged" value={logs.length} icon={Activity} />
+        <StatCard label="Total distance" value={`${logs.reduce((sum, log) => sum + safeNumber(log.distance), 0).toFixed(2)} km`} icon={Footprints} />
+        <StatCard label="Total time" value={formatCardioTime(logs.reduce((sum, log) => sum + safeNumber(log.duration), 0))} detail="Hours:minutes:seconds for 1h+" icon={Clock} />
+        <StatCard label="Cardio sessions" value={logs.length} icon={Activity} />
       </div>
-
-
       <section className="panel">
-        <SectionHeading eyebrow="HISTORY" title="Recent runs" />
-
-
-        {logs.length === 0 ? (
-          <EmptyState icon={Footprints} title="No runs logged yet" description="Your saved runs will appear here." />
-        ) : (
+        <SectionHeading eyebrow="ENERGY" title="Calories burned" subtitle="Record the calories reported by your watch or machine. Sessions left blank are excluded from calorie totals." />
+        <div className="stats-grid">
+          <StatCard label="This week" value={`${cardioCalories(weeklyLogs).toLocaleString()} kcal`} icon={Flame} />
+          <StatCard label="All time" value={`${cardioCalories(logs).toLocaleString()} kcal`} icon={Flame} />
+          <StatCard label="Sessions with calories" value={caloriesLogged} icon={Activity} />
+        </div>
+      </section>
+      <section className="panel">
+        <SectionHeading eyebrow="HISTORY" title="Recent cardio" />
+        {logs.length === 0 ? <EmptyState icon={Footprints} title="No cardio logged yet" description="Your saved cardio sessions will appear here." /> : (
           <div className="log-list">
             {[...logs].sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).map((log) => (
               <div className="log-row" key={log.id}>
-                <div className="log-icon"><Footprints size={18} /></div>
+                <div className="log-icon">{cardioActivity(log) === 'Bike' ? <Bike size={18} /> : <Footprints size={18} />}</div>
                 <div className="log-main">
-                  <strong>{log.distance} km run</strong>
+                  <strong>{log.environment ? `${log.environment} ` : ''}{cardioActivity(log)}{safeNumber(log.distance) > 0 ? ` · ${Number(log.distance).toFixed(2)} km` : ''}</strong>
                   <span>{formatDate(log.date)} · {log.intensity}{log.notes ? ` · ${log.notes}` : ''}</span>
+                  <span>{formatCardioTime(log.duration)}{['Run', 'Walk'].includes(cardioActivity(log)) && safeNumber(log.distance) > 0 ? ` · ${formatPace(log.duration, log.distance)} /km` : ''}</span>
                 </div>
-                <div className="log-value">{log.duration} min · {formatPace(log.duration, log.distance)} /km</div>
-                <IconButton title="Delete run" onClick={() => { if (window.confirm('Delete this run?')) onDelete(log.id); }}><Trash2 size={16} /></IconButton>
+                <div className="log-value">{log.calories != null ? `${log.calories} kcal` : 'Calories not logged'}</div>
+                <IconButton title="Delete cardio" onClick={() => { if (window.confirm('Delete this cardio session?')) onDelete(log.id); }}><Trash2 size={16} /></IconButton>
               </div>
             ))}
           </div>
@@ -1387,7 +1431,6 @@ function Cardio({ onSave, logs, onDelete }) {
     </div>
   );
 }
-
 
 function BasketballPage({ logs, onSave, onDelete }) {
   const [selected, setSelected] = useState('Shooting Session');
@@ -1673,7 +1716,8 @@ function Progress({ state, history, onDeleteHistory }) {
 
   const weekSessions = loggedSessions(state).filter((session) => session.date >= weekStartString);
   const weekHistory = history.filter((item) => item.date >= weekStartString);
-  const weekRuns = (state.runLogs || []).filter((item) => item.date >= weekStartString);
+  const weekCardio = (state.runLogs || []).filter((item) => item.date >= weekStartString && item.date <= today());
+  const weekRuns = weekCardio.filter((item) => cardioActivity(item) === 'Run');
   const weekBasketball = (state.bbLogs || []).filter((item) => item.date >= weekStartString);
 
 
@@ -1732,7 +1776,8 @@ function Progress({ state, history, onDeleteHistory }) {
       <div className="stats-grid">
         <StatCard label="Logged exercises" value={weekHistory.length} detail="This week" icon={Dumbbell} accent />
         <StatCard label="Training volume" value={Math.round(weeklyVolume).toLocaleString()} detail="Weight × reps" icon={TrendingUp} />
-        <StatCard label="Running distance" value={`${totalDistance.toFixed(1)} km`} detail="This week" icon={Footprints} />
+        <StatCard label="Running distance" value={`${totalDistance.toFixed(2)} km`} detail="This week" icon={Footprints} />
+        <StatCard label="Cardio calories" value={`${cardioCalories(weekCardio).toLocaleString()} kcal`} detail="Logged this week" icon={Flame} />
         <StatCard label="Basketball sessions" value={weekBasketball.length} detail="This week" icon={Activity} />
         <StatCard label="Activity time" value={`${Math.floor(weekMinutes / 60)}h ${weekMinutes % 60}m`} detail="This week" icon={Clock} />
       </div>
@@ -1928,7 +1973,7 @@ const NAV_ITEMS = [
   { name: 'Home', label: 'Overview', icon: Home },
   { name: 'Programme', label: 'Gym', icon: Dumbbell },
   { name: 'Basketball', label: 'Basketball', icon: Activity },
-  { name: 'Cardio', label: 'Running', icon: Footprints },
+  { name: 'Cardio', label: 'Cardio', icon: Footprints },
   { name: 'Progress', label: 'Progress', icon: BarChart3 },
   { name: 'Settings', label: 'Settings', icon: Settings },
 ];
@@ -2035,7 +2080,7 @@ export default function App() {
 
 
   const weeklySessions = loggedSessions(state).filter((session) => session.date >= weekStartString);
-  const weeklyRuns = state.runLogs.filter((log) => log.date >= weekStartString);
+  const weeklyRuns = state.runLogs.filter((log) => log.date >= weekStartString && log.date <= today() && cardioActivity(log) === 'Run');
   const weeklyBasketball = state.bbLogs.filter((log) => log.date >= weekStartString);
 
 
@@ -2086,18 +2131,12 @@ export default function App() {
       runLogs: [...current.runLogs, entry],
       sessions: [
         ...current.sessions,
-        {
-          id: entry.id,
-          date: entry.date,
-          type: 'run',
-          name: 'Run',
-          duration: safeNumber(entry.duration) * 60,
-        },
+        cardioSession(entry),
       ],
     }));
 
 
-    setNotice('Run saved.');
+    setNotice('Cardio saved.');
   }, []);
 
 
@@ -2330,7 +2369,7 @@ export default function App() {
         <div className="stats-grid">
           <StatCard label="Exercises logged" value={state.history.filter((item) => item.date === today()).length} detail="Today" icon={Dumbbell} accent />
           <StatCard label="Weekly sessions" value={weeklySessions.length} detail="All activities" icon={Activity} />
-          <StatCard label="Run distance" value={`${weeklyRuns.reduce((sum, log) => sum + safeNumber(log.distance), 0).toFixed(1)} km`} detail="This week" icon={Footprints} />
+          <StatCard label="Run distance" value={`${weeklyRuns.reduce((sum, log) => sum + safeNumber(log.distance), 0).toFixed(2)} km`} detail="This week" icon={Footprints} />
           <StatCard label="Recovery" value={`${recovery.score}/100`} detail={recovery.status} icon={BatteryCharging} />
         </div>
 
@@ -2358,7 +2397,7 @@ export default function App() {
 
                 <button type="button" className="quick-start-card" onClick={() => setTab('Cardio')}>
                   <div className="quick-start-image running-image"><Footprints size={30} /></div>
-                  <div><strong>Running</strong><span>Cardio & endurance</span></div>
+                  <div><strong>Cardio</strong><span>Run, walk, bike & more</span></div>
                   <ArrowRight size={17} />
                 </button>
 

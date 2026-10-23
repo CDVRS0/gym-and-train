@@ -38,3 +38,37 @@ test('finished timer and linked exercise count once', () => {
  assert.equal(context.loggedSessions(state).length,1);
  assert.equal(context.loggedSessions(state)[0].duration,600);
 });
+test('precise cardio time accepts minutes and seconds', () => {
+ assert.equal(context.parseCardioDuration('20:02') * 60, 1202);
+ assert.equal(context.formatCardioTime(context.parseCardioDuration('20:02')), '20:02');
+});
+test('long cardio sessions round-trip hours, minutes and seconds', () => {
+ assert.equal(context.parseCardioDuration('1:20:02') * 60, 4802);
+ assert.equal(context.formatCardioTime(context.parseCardioDuration('1:20:02')), '1:20:02');
+ assert.equal(context.formatCardioTime(context.parseCardioDuration('90:02')), '1:30:02');
+});
+test('invalid and zero time are rejected', () => {
+ for (const value of ['', '20.02', '20:60', '1:60:00', '1:20:99', '0:00', '-20:02', '20:2', 'Infinity:00']) assert.equal(context.parseCardioDuration(value), null, value);
+});
+test('legacy run durations remain minutes and default to run', () => {
+ assert.equal(context.formatCardioTime(28.5), '28:30');
+ assert.equal(context.cardioActivity({duration:28.5}), 'Run');
+ assert.equal(context.cardioSession({id:'old',date:'2026-10-23',duration:28.5}).duration,1710);
+});
+test('3.66km run keeps exact seconds and pace', () => {
+ const duration = context.parseCardioDuration('20:02');
+ assert.equal(context.formatPace(duration,3.66), '5:28');
+ const session = context.cardioSession({id:'new',date:'2026-10-23',duration,activity:'Run',environment:'Outdoor'});
+ assert.equal(session.duration,1202);
+ assert.equal(session.name,'Outdoor Run');
+ assert.equal(session.type,'run');
+});
+test('indoor stairmaster can log time and calories without distance', () => {
+ const session = context.cardioSession({id:'stairs',date:'2026-10-23',activity:'Stairmaster',environment:'Indoor',duration:15,distance:null,calories:120});
+ assert.equal(session.type,'cardio');
+ assert.equal(session.name,'Indoor Stairmaster');
+ assert.equal(session.duration,900);
+});
+test('calorie totals omit missing values and retain zero', () => {
+ assert.equal(context.cardioCalories([{calories:250},{calories:null},{},{calories:0},{calories:120}]),370);
+});

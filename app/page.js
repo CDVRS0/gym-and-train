@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 
 import GymCloudSync from '../components/GymCloudSync';
+import TrainingCoach from '../components/TrainingCoach';
 import { useGymCloudSync } from '../hooks/useGymCloudSync';
 import { GymSyncStatus } from '../components/GymCloudSync';
 
@@ -2063,6 +2064,7 @@ const NAV_ITEMS = [
   { name: 'Basketball', label: 'Basketball', icon: Activity },
   { name: 'Cardio', label: 'Cardio', icon: Footprints },
   { name: 'Progress', label: 'Progress', icon: BarChart3 },
+  { name: 'AI Coach', label: 'AI Coach', icon: Zap },
   { name: 'Settings', label: 'Settings', icon: Settings },
 ];
 
@@ -2403,6 +2405,8 @@ export default function App() {
     }
 
 
+    if (tab === 'AI Coach') return <TrainingCoach />;
+
     if (tab === 'Progress') {
       return (
         <Progress
@@ -2741,7 +2745,7 @@ export default function App() {
 
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
-        {NAV_ITEMS.slice(0, 5).map(({ name, label, icon: Icon }) => (
+        {NAV_ITEMS.slice(0, 6).map(({ name, label, icon: Icon }) => (
           <button
             type="button"
             key={name}
@@ -3180,7 +3184,7 @@ export default function App() {
           .chart-bar-track { height: 120px; }
           .settings-row { align-items: flex-start; flex-direction: column; gap: 12px; }
           .settings-row select, .settings-row input { max-width: none; }
-          .mobile-nav { position: fixed; z-index: 50; inset: auto 0 0; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); padding: 7px 4px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid var(--os-line); background: rgba(9,14,22,.96); backdrop-filter: blur(18px); }
+          .mobile-nav { position: fixed; z-index: 50; inset: auto 0 0; display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); padding: 7px 4px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid var(--os-line); background: rgba(9,14,22,.96); backdrop-filter: blur(18px); }
           .mobile-nav-item { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0; border: 0; color: #7d8ba2; background: transparent; font-size: 8px; }
           .mobile-nav-active { color: #8db8ff; }
           .mobile-nav-active svg { filter: drop-shadow(0 0 6px rgba(57,132,255,.3)); }

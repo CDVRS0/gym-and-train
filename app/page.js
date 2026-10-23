@@ -1,7 +1,7 @@
 'use client';
 
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AlertCircle,
@@ -241,6 +241,46 @@ function dateKey(date = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function loggedSessions(state) {
+  const sessions = [...(state.sessions || [])];
+  for (const entry of state.history || []) {
+    if (!entry.date || !entry.day) continue;
+    const matched = sessions.some((session) => session.type === 'train' && (
+      (entry.sessionId && session.id === entry.sessionId) ||
+      (session.date === entry.date && (session.name === entry.day || session.name === 'Gym session'))
+    ));
+    if (!matched) sessions.push({ id: entry.sessionId || `${entry.date}|${entry.day}`, date: entry.date, name: entry.day, type: 'train', duration: 0 });
+  }
+  return sessions;
+}
+
+function convertWeightUnit(state, unit) {
+  if (unit === state.settings.weightUnit) return state;
+  const factor = unit === 'lb' ? 2.2046226218 : 1 / 2.2046226218;
+  const convert = (weight) => Number((safeNumber(weight) * factor).toFixed(2));
+  return {
+    ...state,
+    settings: { ...state.settings, weightUnit: unit },
+    loads: Object.fromEntries(Object.entries(state.loads || {}).map(([key, weight]) => [key, convert(weight)])),
+    history: state.history.map((entry) => ({ ...entry, weight: convert(entry.weight), volume: convert(entry.volume), weights: entry.weights?.map(convert), sets: entry.sets?.map((set) => ({ ...set, weight: convert(set.weight) })) })),
+    drafts: Object.fromEntries(Object.entries(state.drafts || {}).map(([key, draft]) => [key, { ...draft, sets: draft.sets.map((set) => ({ ...set, weight: set.weight === '' ? '' : String(convert(set.weight)) })) }])),
+  };
+}
+
+function formatPace(minutes, km) {
+  const seconds = Math.round(safeNumber(minutes) * 60 / Math.max(0.001, safeNumber(km)));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function downloadBackup(data) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `gym-training-backup-${dateKey()}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function today() {
   return dateKey(new Date());
 }
@@ -254,6 +294,7 @@ function makeId() {
 
 function emptyState() {
   return {
+    drafts: {},
     history: [],
     sessions: [],
     water: {},
@@ -336,6 +377,7 @@ function readState() {
         ...emptyState().settings,
         ...(parsed.settings || {}),
       },
+      drafts: parsed.drafts && typeof parsed.drafts === 'object' ? parsed.drafts : {},
       history: Array.isArray(parsed.history) ? parsed.history : [],
       sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
       runLogs: Array.isArray(parsed.runLogs) ? parsed.runLogs : [],
@@ -348,6 +390,10 @@ function readState() {
       loads: parsed.loads && typeof parsed.loads === 'object' && !Array.isArray(parsed.loads) ? parsed.loads : {},
     };
   } catch {
+    try {
+      const raw = localStorage.getItem(STORAGE);
+      if (raw) localStorage.setItem(`${STORAGE}-recovery-${Date.now()}`, raw);
+    } catch { /* Original storage remains available if recovery cannot be written. */ }
     return emptyState();
   }
 }
@@ -471,7 +517,7 @@ function progressionRecommendation(exercise, day, history, unit = 'kg') {
     };
   }
 
-  if (allAtTop && baseWeight > 0 && !range.timed && rir >= 2) {
+  if (allAtTop && baseWeight > 0 && !range.timed && rir >= 2 && completedSets.every((set) => safeNumber(set.weight) === baseWeight)) {
     const increment = progressionIncrement(baseWeight, exercise.name, unit);
     const nextLoad = Number((baseWeight + increment).toFixed(2));
     return {
@@ -708,15 +754,38 @@ function Timer({ initial = 90, onClose }) {
   const [running, setRunning] = useState(false);
   const [deadline, setDeadline] = useState(null);
   const [customMinutes, setCustomMinutes] = useState('');
+  const [timerLoaded, setTimerLoaded] = useState(false);
+  const initialRef = useRef(initial);
 
   // Use a deadline rather than decrementing once per interval. Background-tab throttling
   // will therefore not make the rest timer drift or run longer than the selected duration.
   useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`${STORAGE}-rest`) || 'null');
+      if (saved && Number.isFinite(saved.duration) && saved.duration > 0) {
+        setDuration(saved.duration);
+        setRemaining(saved.deadline ? Math.max(0, Math.ceil((saved.deadline - Date.now()) / 1000)) : Math.max(0, safeNumber(saved.remaining)));
+        setRunning(Boolean(saved.running && saved.deadline));
+        setDeadline(saved.deadline || null);
+      }
+    } catch { /* Keep default timer if device state is invalid. */ }
+    setTimerLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (initialRef.current === initial) return;
+    initialRef.current = initial;
     setDuration(initial);
     setRemaining(initial);
     setRunning(false);
     setDeadline(null);
   }, [initial]);
+
+  useEffect(() => {
+    if (!timerLoaded) return;
+    try { localStorage.setItem(`${STORAGE}-rest`, JSON.stringify({ duration, remaining, running, deadline })); }
+    catch { /* Training data saving reports storage errors separately. */ }
+  }, [duration, remaining, running, deadline, timerLoaded]);
 
   useEffect(() => {
     if (!running || deadline === null) return undefined;
@@ -854,23 +923,23 @@ function ExerciseCard({
   onSave,
   onRest,
   onSubstitute,
+  draft,
+  onDraftChange,
+  onNewEntry,
 }) {
-  const [sets, setSets] = useState([]);
-  const [rir, setRir] = useState('2');
+  const [entryId] = useState(makeId);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [expanded, setExpanded] = useState(true);
-
-
-  useEffect(() => {
-    setSets(
-      Array.from({ length: exercise.sets }, (_, setIndex) => ({
-        weight: String(savedLoad || ''),
-        reps: String(getRepRange(exercise).min),
-        done: false,
-      }))
-    );
-  }, [exercise.name, exercise.sets, exercise.target]);
-
+  const currentDraft = draft || {
+    id: entryId,
+    sets: Array.from({ length: exercise.sets }, () => ({
+      weight: String(savedLoad || ''), reps: String(getRepRange(exercise).min), done: false,
+    })),
+    rir: '2',
+  };
+  const { sets, rir } = currentDraft;
+  const setSets = (update) => onDraftChange({ ...currentDraft, sets: update(sets) });
+  const setRir = (value) => onDraftChange({ ...currentDraft, rir: value });
 
   const completed = sets.filter((set) => set.done).length;
   const previous = getExerciseHistory(history, exercise.name, day)[0];
@@ -898,6 +967,11 @@ function ExerciseCard({
       return;
     }
 
+    if (sets.some((set) => set.done && (!Number.isFinite(Number(set.weight)) || Number(set.weight) < 0 || !Number.isFinite(Number(set.reps)) || Number(set.reps) <= 0))) {
+      window.alert('Completed sets need a non-negative weight and reps greater than zero.');
+      return;
+    }
+    onDraftChange(currentDraft);
     const normalizedSets = sets.map((set) => ({
       weight: safeNumber(set.weight),
       reps: safeNumber(set.reps),
@@ -908,7 +982,7 @@ function ExerciseCard({
     const volume = completedSets.reduce((sum, set) => sum + set.weight * set.reps, 0);
 
     onSave({
-      id: makeId(),
+      id: currentDraft.id,
       date: today(),
       day,
       exercise: exercise.name,
@@ -1026,12 +1100,13 @@ function ExerciseCard({
                 <TimerIcon size={15} /> Rest
               </button>
               <button type="button" className="button button-primary button-small" onClick={saveExercise}>
-                <Save size={14} /> Save
+                <Save size={14} /> {history.some((item) => item.id === currentDraft.id) ? 'Update' : 'Save'}
               </button>
             </div>
           </div>
 
 
+          <button type="button" className="text-button" onClick={() => { if (window.confirm('Start a new entry for this exercise? Save current sets first.')) onNewEntry(); }}>New exercise entry</button>
           {showAlternatives && (
             <div className="alternatives-panel">
               <div className="eyebrow">EXERCISE ALTERNATIVES</div>
@@ -1198,7 +1273,8 @@ function ReadinessCard({ recovery, state, setState }) {
 }
 
 
-function Cardio({ onSave, logs }) {
+function Cardio({ onSave, logs, onDelete }) {
+  const [runDate, setRunDate] = useState(today);
   const [distance, setDistance] = useState('');
   const [duration, setDuration] = useState('');
   const [intensity, setIntensity] = useState('Moderate');
@@ -1209,12 +1285,13 @@ function Cardio({ onSave, logs }) {
     event.preventDefault();
 
 
-    if (safeNumber(distance) <= 0 || safeNumber(duration) <= 0) return;
+    if (safeNumber(distance) <= 0 || safeNumber(duration) <= 0 || !runDate || runDate > today()) return;
 
 
     onSave({
       id: makeId(),
-      date: today(),
+      date: runDate,
+      createdAt: new Date().toISOString(),
       distance: safeNumber(distance),
       duration: safeNumber(duration),
       intensity,
@@ -1248,13 +1325,14 @@ function Cardio({ onSave, logs }) {
 
 
         <div className="form-grid">
+          <label>Run date<input aria-label="Run date" type="date" required max={today()} value={runDate} onChange={(event) => setRunDate(event.target.value)} /></label>
           <label>
             Distance (km)
             <input type="number" min="0.1" step="0.1" required value={distance} onChange={(event) => setDistance(event.target.value)} placeholder="e.g. 5.0" />
           </label>
           <label>
             Duration (minutes)
-            <input type="number" min="1" step="1" required value={duration} onChange={(event) => setDuration(event.target.value)} placeholder="e.g. 28" />
+            <input type="number" min="0.1" step="0.1" required value={duration} onChange={(event) => setDuration(event.target.value)} placeholder="e.g. 28" />
           </label>
           <label>
             Intensity
@@ -1292,14 +1370,15 @@ function Cardio({ onSave, logs }) {
           <EmptyState icon={Footprints} title="No runs logged yet" description="Your saved runs will appear here." />
         ) : (
           <div className="log-list">
-            {[...logs].sort((a, b) => b.date.localeCompare(a.date)).map((log) => (
+            {[...logs].sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).map((log) => (
               <div className="log-row" key={log.id}>
                 <div className="log-icon"><Footprints size={18} /></div>
                 <div className="log-main">
                   <strong>{log.distance} km run</strong>
                   <span>{formatDate(log.date)} · {log.intensity}{log.notes ? ` · ${log.notes}` : ''}</span>
                 </div>
-                <div className="log-value">{log.duration} min</div>
+                <div className="log-value">{log.duration} min · {formatPace(log.duration, log.distance)} /km</div>
+                <IconButton title="Delete run" onClick={() => { if (window.confirm('Delete this run?')) onDelete(log.id); }}><Trash2 size={16} /></IconButton>
               </div>
             ))}
           </div>
@@ -1472,7 +1551,7 @@ function EmptyState({ icon: Icon, title, description }) {
 }
 
 
-function Programme({ state, history, onSave, onRest, onStartSession, activeSession, sessionRunning, elapsedSeconds, onPauseSession, onResumeSession, onFinishSession }) {
+function Programme({ state, history, onDraftChange, onSave, onRest, onStartSession, activeSession, sessionRunning, elapsedSeconds, onPauseSession, onResumeSession, onFinishSession }) {
   const [day, setDay] = useState('Chest & Triceps');
   const [substitutions, setSubstitutions] = useState({});
   const recovery = useMemo(() => getRecovery(state), [state]);
@@ -1543,13 +1622,16 @@ function Programme({ state, history, onSave, onRest, onStartSession, activeSessi
       <div className="exercise-list">
         {exercises.map((exercise, index) => (
           <ExerciseCard
-            key={`${day}-${exercise.originalName}-${index}`}
+            key={`${day}-${exercise.originalName}-${index}-${state.draftRevision || 0}`}
             exercise={exercise}
             index={index}
             day={day}
             unit={state.settings.weightUnit}
             savedLoad={suggestedLoad(exercise, day, history, state, state.settings.weightUnit)}
             history={history}
+            draft={state.drafts?.[`${day}|${exercise.name}`]}
+            onDraftChange={(draft) => onDraftChange(`${day}|${exercise.name}`, draft)}
+            onNewEntry={() => onDraftChange(`${day}|${exercise.name}`, { id: makeId(), sets: Array.from({ length: exercise.sets }, () => ({ weight: String(suggestedLoad(exercise, day, history, state, state.settings.weightUnit) || ''), reps: String(getRepRange(exercise).min), done: false })), rir: '2' })}
             onSave={saveExercise}
             onRest={onRest}
             onSubstitute={(alternative) => setSubstitutions((current) => ({
@@ -1589,7 +1671,7 @@ function Progress({ state, history, onDeleteHistory }) {
   const weekStartString = dateKey(weekStart);
 
 
-  const weekSessions = (state.sessions || []).filter((session) => session.date >= weekStartString);
+  const weekSessions = loggedSessions(state).filter((session) => session.date >= weekStartString);
   const weekHistory = history.filter((item) => item.date >= weekStartString);
   const weekRuns = (state.runLogs || []).filter((item) => item.date >= weekStartString);
   const weekBasketball = (state.bbLogs || []).filter((item) => item.date >= weekStartString);
@@ -1725,7 +1807,7 @@ function Progress({ state, history, onDeleteHistory }) {
   );
 }
 
-function SettingsPage({ state, setState, syncStatus, onReset, }) {
+function SettingsPage({ state, setState, syncStatus, retrySync, onReset, }) {
   return (
     <div className="page-stack">
       <SectionHeading
@@ -1742,15 +1824,10 @@ function SettingsPage({ state, setState, syncStatus, onReset, }) {
           </div>
 
           <select
+            aria-label="Weight unit"
             value={state.settings.weightUnit}
             onChange={(event) =>
-              setState((current) => ({
-                ...current,
-                settings: {
-                  ...current.settings,
-                  weightUnit: event.target.value,
-                },
-              }))
+              setState((current) => convertWeightUnit(current, event.target.value))
             }
           >
             <option value="kg">Kilograms (kg)</option>
@@ -1802,7 +1879,8 @@ function SettingsPage({ state, setState, syncStatus, onReset, }) {
           </div>
         </div>
 
-        <GymCloudSync state={state} />
+        <GymCloudSync onSync={retrySync} />
+        <button className="button button-secondary" onClick={() => downloadBackup(state)}>Download training backup</button>
         <GymSyncStatus status={syncStatus} />
       </section>
 
@@ -1865,6 +1943,7 @@ export default function App() {
   const [activeSession, setActiveSession] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [sessionRunning, setSessionRunning] = useState(false);
+  const [runtimeLoaded, setRuntimeLoaded] = useState(false);
   const [sessionClock, setSessionClock] = useState(Date.now());
   const [confirmReset, setConfirmReset] = useState(false);
   const [notice, setNotice] = useState('');
@@ -1873,6 +1952,7 @@ export default function App() {
   syncStatus,
   conflict,
   resolveConflict,
+  retrySync,
 } = useGymCloudSync({
   state,
   setState,
@@ -1884,6 +1964,15 @@ export default function App() {
     const saved = readState();
     setState(saved);
     setTab(NAV_ITEMS.some((item) => item.name === saved.lastTab) ? saved.lastTab : 'Home');
+    try {
+      const runtime = JSON.parse(localStorage.getItem(`${STORAGE}-session`) || 'null');
+      if (runtime?.activeSession?.id) {
+        setActiveSession(runtime.activeSession);
+        setElapsedSeconds(Math.max(0, safeNumber(runtime.elapsedSeconds)));
+        setSessionRunning(Boolean(runtime.sessionRunning && runtime.activeSession.startedAt));
+      }
+    } catch { /* Invalid device clock does not prevent recovery of training data. */ }
+    setRuntimeLoaded(true);
     setLoaded(true);
   }, []);
 
@@ -1893,12 +1982,23 @@ export default function App() {
 
 
     try {
-      localStorage.setItem(STORAGE, JSON.stringify({ ...state, lastTab: tab }));
+      localStorage.setItem(STORAGE, JSON.stringify(state));
     } catch (error) {
       console.error('Unable to save training data:', error);
       setNotice('Unable to save data. Your browser storage may be full.');
     }
-  }, [state, tab, loaded]);
+  }, [state, loaded]);
+
+  useEffect(() => {
+    if (loaded) setState((current) => current.lastTab === tab ? current : { ...current, lastTab: tab });
+  }, [tab, loaded]);
+
+  useEffect(() => {
+    if (!runtimeLoaded) return;
+    try {
+      localStorage.setItem(`${STORAGE}-session`, JSON.stringify({ activeSession, elapsedSeconds, sessionRunning }));
+    } catch { setNotice('Unable to save the active timer. Keep this page open.'); }
+  }, [activeSession, elapsedSeconds, sessionRunning, runtimeLoaded]);
 
 
   useEffect(() => {
@@ -1934,7 +2034,7 @@ export default function App() {
   const weekStartString = dateKey(weekStart);
 
 
-  const weeklySessions = state.sessions.filter((session) => session.date >= weekStartString);
+  const weeklySessions = loggedSessions(state).filter((session) => session.date >= weekStartString);
   const weeklyRuns = state.runLogs.filter((log) => log.date >= weekStartString);
   const weeklyBasketball = state.bbLogs.filter((log) => log.date >= weekStartString);
 
@@ -1956,7 +2056,7 @@ export default function App() {
       const previousBest = Math.max(
         0,
         ...current.history
-          .filter((item) => (item.exercise || item.name) === entry.exercise && item.day === entry.day)
+          .filter((item) => item.id !== entry.id && (item.exercise || item.name) === entry.exercise && item.day === entry.day)
           .map((item) => bestCompletedSetWeight(item))
       );
       const pr = weight > 0 && weight > previousBest;
@@ -1964,13 +2064,13 @@ export default function App() {
         ...entry,
         weight,
         createdAt: new Date().toISOString(),
-        sessionId: activeSession?.id || entry.sessionId || null,
+        sessionId: activeSession?.type === 'train' && (activeSession.name === entry.day || activeSession.name === 'Gym session') ? activeSession.id : entry.sessionId || null,
         pr,
       };
 
       return {
         ...current,
-        history: [...current.history, savedEntry],
+        history: [...current.history.filter((item) => item.id !== entry.id), savedEntry],
         loads: weight > 0 ? { ...current.loads, [entry.exercise]: weight } : current.loads,
       };
     });
@@ -2023,8 +2123,9 @@ export default function App() {
 
 
   const startSession = (type, name) => {
+    if (activeSession) return;
     const startedAt = Date.now();
-    setActiveSession({ id: makeId(), type, name, startedAt });
+    setActiveSession({ id: makeId(), type, name, startedAt, date: today() });
     setElapsedSeconds(0);
     setSessionClock(startedAt);
     setSessionRunning(true);
@@ -2056,11 +2157,13 @@ export default function App() {
 
     setState((current) => ({
       ...current,
+      draftRevision: safeNumber(current.draftRevision) + 1,
+      drafts: Object.fromEntries(Object.entries(current.drafts || {}).filter(([key]) => activeSession.type !== 'train' || (activeSession.name !== 'Gym session' && !key.startsWith(`${activeSession.name}|`)))),
       sessions: [
-        ...current.sessions,
+        ...current.sessions.filter((item) => item.id !== activeSession.id),
         {
           id: activeSession.id,
-          date: today(),
+          date: activeSession.date || today(),
           type: activeSession.type,
           name: activeSession.name,
           duration,
@@ -2137,6 +2240,7 @@ export default function App() {
         <Programme
           state={state}
           history={state.history}
+          onDraftChange={(key, draft) => setState((current) => ({ ...current, drafts: { ...current.drafts, [key]: draft } }))}
           onSave={saveExercise}
           onStartSession={(workoutDay) => startSession('train', workoutDay)}
           activeSession={activeSession}
@@ -2166,7 +2270,7 @@ export default function App() {
 
 
     if (tab === 'Cardio') {
-      return <Cardio logs={state.runLogs} onSave={saveRun} />;
+      return <Cardio logs={state.runLogs} onSave={saveRun} onDelete={deleteRun} />;
     }
 
 
@@ -2187,6 +2291,7 @@ export default function App() {
       state={state}
       setState={setState}
       syncStatus={syncStatus}
+      retrySync={retrySync}
       onReset={() => setConfirmReset(true)}
     />
   );
@@ -2453,6 +2558,13 @@ export default function App() {
 
 
         <div className="content-area">
+          {conflict && <section className="panel" role="alert">
+            <h3>Choose your training data</h3>
+            <p>This browser and your cloud account have different data. Download a backup before choosing a version.</p>
+            <button className="button button-secondary" onClick={() => downloadBackup({ local: state, cloud: conflict.cloud })}>Download both versions</button>
+            <button className="button button-primary" onClick={() => resolveConflict('local')}>Keep this browser</button>
+            {conflict.cloud && <button className="button button-secondary" onClick={() => resolveConflict('cloud')}>Use cloud data</button>}
+          </section>}
           {renderPage()}
         </div>
 
@@ -2464,7 +2576,7 @@ export default function App() {
       </main>
 
 
-      {timerOpen && (
+      <div style={{ display: timerOpen ? undefined : 'none' }}>
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setTimerOpen(false);
         }}>
@@ -2472,7 +2584,7 @@ export default function App() {
             <Timer initial={timerDuration} onClose={() => setTimerOpen(false)} />
           </div>
         </div>
-      )}
+      </div>
 
 
       {confirmReset && (

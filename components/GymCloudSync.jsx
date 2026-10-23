@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-export default function GymCloudSync({ state }) {
+export default function GymCloudSync({ onSync }) {
   const [email, setEmail] = useState('');
   const [user, setUser] = useState(null);
   const [status, setStatus] = useState('');
@@ -97,42 +97,8 @@ export default function GymCloudSync({ state }) {
         throw new Error('Your session has changed. Sign in again.');
       }
 
-      // Check whether cloud data already exists before overwriting it.
-      const { data: existing, error: readError } = await supabase
-        .from('gym_app_state')
-        .select('user_id, updated_at')
-        .eq('user_id', currentUser.id)
-        .maybeSingle();
-
-      if (readError) throw readError;
-
-      const message = existing
-        ? `Cloud data already exists, last updated ${new Date(
-            existing.updated_at
-          ).toLocaleString()}.\n\nUploading will replace that saved GYM Training OS state with the data currently in this browser.\n\nContinue?`
-        : 'This will upload the GYM Training OS data currently in this browser to your cloud account. Continue?';
-
-      if (!window.confirm(message)) {
-        setStatus('Sync cancelled. Your data has not been uploaded.');
-        return;
-      }
-
-      setStatus('Synchronising training data...');
-
-      const { error } = await supabase.from('gym_app_state').upsert(
-        {
-          user_id: currentUser.id,
-          state,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' }
-      );
-
-      if (error) throw error;
-
-      setStatus(
-        `Successfully synchronised at ${new Date().toLocaleTimeString()}.`
-      );
+      await onSync?.();
+      setStatus('Cloud check complete. Resolve any data choice shown above.');
     } catch (error) {
       setStatus(
         error.message ||
@@ -241,8 +207,8 @@ export default function GymCloudSync({ state }) {
 export function GymSyncStatus({ status }) {
   const labels = {
     loading: 'Synchronising…',
-    synced: 'All changes saved',
-    offline: 'Offline — saving locally',
+    synced: 'Cloud changes saved',
+    offline: 'Cloud inactive — browser storage in use',
     error: 'Sync failed — check your connection',
     'needs-decision': 'Choose which data to keep',
   };

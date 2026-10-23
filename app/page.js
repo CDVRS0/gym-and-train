@@ -330,6 +330,7 @@ function makeId() {
 
 function emptyState() {
   return {
+    supersets: {},
     drafts: {},
     history: [],
     sessions: [],
@@ -602,6 +603,44 @@ function suggestedLoad(exercise, day, history, state, unit = 'kg') {
   const saved = safeNumber(state.loads?.[exercise.name], 0);
   if (saved > 0) return saved;
   return 0;
+}
+
+
+function nextSessionSets(exercise, day, history, state, unit = 'kg') {
+  const previous = getExerciseHistory(history, exercise.name, day)[0];
+  const recommendation = progressionRecommendation(exercise, day, history, unit);
+  const range = getRepRange(exercise);
+  const load = suggestedLoad(exercise, day, history, state, unit);
+  const completed = completedSetsForEntry(previous);
+  const fullWorkout = completed.length >= Math.max(1, safeNumber(previous?.plannedSets, previous?.sets?.length || exercise.sets));
+  const resetReps = recommendation.kind === 'reduce' || (recommendation.kind === 'up' && recommendation.nextLoad > 0);
+  const buildReps = fullWorkout && safeNumber(previous?.rir, 2) >= 2 && recommendation.kind === 'build' && !range.timed;
+  return Array.from({ length: exercise.sets }, (_, index) => {
+    const old = previous?.sets?.[index];
+    const hasPerformance = old?.done && safeNumber(old.reps) > 0;
+    const reps = resetReps || !hasPerformance ? range.min
+      : Math.min(range.max, Math.max(range.min, safeNumber(old.reps) + (buildReps ? 1 : 0)));
+    const weight = !resetReps && hasPerformance ? Math.max(0, safeNumber(old.weight)) : load;
+    return { weight: weight > 0 ? String(weight) : '', reps: String(reps), done: false };
+  });
+}
+
+function addSuperset(pairs, first, second, id) {
+  if (!first || !second || first === second || pairs.some((pair) => pair.exercises.includes(first) || pair.exercises.includes(second))) return pairs;
+  return [...pairs, { id, exercises: [first, second] }];
+}
+
+function groupSupersets(exercises, pairs) {
+  const used = new Set();
+  const groups = [];
+  for (const exercise of exercises) {
+    if (used.has(exercise.originalName)) continue;
+    const pair = pairs.find((item) => item.exercises.includes(exercise.originalName) && item.exercises.every((name) => exercises.some((candidate) => candidate.originalName === name)));
+    const members = pair ? pair.exercises.map((name) => exercises.find((item) => item.originalName === name)) : [exercise];
+    members.forEach((item) => used.add(item.originalName));
+    groups.push({ pair, exercises: members });
+  }
+  return groups;
 }
 
 
@@ -955,7 +994,8 @@ function ExerciseCard({
   index,
   day,
   unit,
-  savedLoad,
+  initialSets,
+  superset,
   history,
   onSave,
   onRest,
@@ -969,9 +1009,7 @@ function ExerciseCard({
   const [expanded, setExpanded] = useState(true);
   const currentDraft = draft || {
     id: entryId,
-    sets: Array.from({ length: exercise.sets }, () => ({
-      weight: String(savedLoad || ''), reps: String(getRepRange(exercise).min), done: false,
-    })),
+    sets: initialSets,
     rir: '2',
   };
   const { sets, rir } = currentDraft;
@@ -1024,6 +1062,8 @@ function ExerciseCard({
       day,
       exercise: exercise.name,
       originalExercise: exercise.originalName || exercise.name,
+      supersetId: superset?.id || null,
+      supersetPartner: superset?.partner || null,
       sets: normalizedSets,
       weights: normalizedSets.map((set) => set.weight),
       reps: normalizedSets.map((set) => set.reps),
@@ -1039,7 +1079,7 @@ function ExerciseCard({
 
 
   return (
-    <article className="exercise-card">
+    <article className="exercise-card" id={`exercise-${index}`} tabIndex={-1}>
       <div className="exercise-heading">
         <button
           type="button"
@@ -1051,7 +1091,7 @@ function ExerciseCard({
             {completed === exercise.sets ? <Check size={17} /> : String(index + 1).padStart(2, '0')}
           </div>
           <div className="exercise-title-wrap">
-            <h3>{exercise.name}</h3>
+            <h3>{superset ? `${superset.label} · ` : ''}{exercise.name}</h3>
             <p>{exercise.sets} sets · {exercise.reps} reps · {exercise.rest}s rest</p>
           </div>
           <ChevronDown className={expanded ? 'chevron-open' : ''} size={19} />
@@ -1059,6 +1099,7 @@ function ExerciseCard({
       </div>
 
 
+      <p className="muted-copy" style={{ padding: '0 18px' }}>Fresh entries fill each set with your next-session targets. Adjust them to record what you actually lift.</p>
       {previous && (
         <div className="previous-performance">
           <History size={14} />
@@ -1133,8 +1174,14 @@ function ExerciseCard({
               <button type="button" className="text-button" onClick={() => setShowAlternatives((value) => !value)}>
                 <RotateCcw size={15} /> Swap
               </button>
-              <button type="button" className="text-button" onClick={() => onRest(exercise.rest)}>
-                <TimerIcon size={15} /> Rest
+              <button type="button" className="text-button" onClick={() => {
+                if (superset?.nextIndex != null) {
+                  const partner = document.getElementById(`exercise-${superset.nextIndex}`);
+                  partner?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  partner?.focus({ preventScroll: true });
+                } else onRest(exercise.rest);
+              }}>
+                <TimerIcon size={15} /> {superset?.nextIndex != null ? 'Next exercise' : superset ? 'Round rest' : 'Rest'}
               </button>
               <button type="button" className="button button-primary button-small" onClick={saveExercise}>
                 <Save size={14} /> {history.some((item) => item.id === currentDraft.id) ? 'Update' : 'Save'}
@@ -1594,9 +1641,11 @@ function EmptyState({ icon: Icon, title, description }) {
 }
 
 
-function Programme({ state, history, onDraftChange, onSave, onRest, onStartSession, activeSession, sessionRunning, elapsedSeconds, onPauseSession, onResumeSession, onFinishSession }) {
+function Programme({ state, history, onFreshWorkout, onSupersetsChange, onDraftChange, onSave, onRest, onStartSession, activeSession, sessionRunning, elapsedSeconds, onPauseSession, onResumeSession, onFinishSession }) {
   const [day, setDay] = useState('Chest & Triceps');
   const [substitutions, setSubstitutions] = useState({});
+  const [firstPair, setFirstPair] = useState('');
+  const [secondPair, setSecondPair] = useState('');
   const recovery = useMemo(() => getRecovery(state), [state]);
   const plan = adjustedPlan(day, recovery);
 
@@ -1607,6 +1656,11 @@ function Programme({ state, history, onDraftChange, onSave, onRest, onStartSessi
     name: substitutions[`${day}-${exercise.name}`] || exercise.name,
   }));
 
+
+  const pairs = Array.isArray(state.supersets?.[day]) ? state.supersets[day] : [];
+  const groups = groupSupersets(exercises, pairs);
+  const pairedNames = new Set(pairs.flatMap((pair) => pair.exercises));
+  const available = exercises.filter((exercise) => !pairedNames.has(exercise.originalName));
 
   const saveExercise = (entry) => onSave(entry);
 
@@ -1628,6 +1682,8 @@ function Programme({ state, history, onDraftChange, onSave, onRest, onStartSessi
             className={day === name ? 'day-chip day-chip-active' : 'day-chip'}
             onClick={() => {
               setDay(name);
+              setFirstPair('');
+              setSecondPair('');
               setSubstitutions({});
             }}
           >
@@ -1662,26 +1718,58 @@ function Programme({ state, history, onDraftChange, onSave, onRest, onStartSessi
       )}
 
 
+      <section className="panel">
+        <SectionHeading eyebrow="WORKOUT SETUP" title="Supersets" subtitle="Pair two exercises. Alternate one set of each, then rest. Pairings are saved for this training day." />
+        <div className="form-grid">
+          <label>First exercise<select aria-label="First superset exercise" value={firstPair} onChange={(event) => { setFirstPair(event.target.value); setSecondPair(''); }}>
+            <option value="">Choose an exercise</option>
+            {available.map((exercise) => <option key={exercise.originalName} value={exercise.originalName}>{exercise.name}</option>)}
+          </select></label>
+          <label>Second exercise<select aria-label="Second superset exercise" value={secondPair} onChange={(event) => setSecondPair(event.target.value)}>
+            <option value="">Choose a partner</option>
+            {available.filter((exercise) => exercise.originalName !== firstPair).map((exercise) => <option key={exercise.originalName} value={exercise.originalName}>{exercise.name}</option>)}
+          </select></label>
+        </div>
+        <button type="button" className="button button-primary" disabled={!firstPair || !secondPair} onClick={() => {
+          onSupersetsChange(day, addSuperset(pairs, firstPair, secondPair, makeId()));
+          setFirstPair(''); setSecondPair('');
+        }}><Plus size={16} /> Add superset</button>
+        <p className="muted-copy">Save each exercise separately. If set counts differ, complete any extra sets individually.</p>
+        <button type="button" className="button button-secondary" onClick={() => {
+          if (window.confirm("Save any current exercise entries first. Replace this day's fields with next-session targets? Your saved history and superset pairings will be kept.")) onFreshWorkout(day);
+        }}>Fill next-session targets</button>
+        <p className="muted-copy">Use this for a new workout without a timer. Finishing a gym timer also prepares fresh fields automatically.</p>
+      </section>
       <div className="exercise-list">
-        {exercises.map((exercise, index) => (
-          <ExerciseCard
-            key={`${day}-${exercise.originalName}-${index}-${state.draftRevision || 0}`}
-            exercise={exercise}
-            index={index}
-            day={day}
-            unit={state.settings.weightUnit}
-            savedLoad={suggestedLoad(exercise, day, history, state, state.settings.weightUnit)}
-            history={history}
-            draft={state.drafts?.[`${day}|${exercise.name}`]}
-            onDraftChange={(draft) => onDraftChange(`${day}|${exercise.name}`, draft)}
-            onNewEntry={() => onDraftChange(`${day}|${exercise.name}`, { id: makeId(), sets: Array.from({ length: exercise.sets }, () => ({ weight: String(suggestedLoad(exercise, day, history, state, state.settings.weightUnit) || ''), reps: String(getRepRange(exercise).min), done: false })), rir: '2' })}
-            onSave={saveExercise}
-            onRest={onRest}
-            onSubstitute={(alternative) => setSubstitutions((current) => ({
-              ...current,
-              [`${day}-${exercise.originalName}`]: alternative,
-            }))}
-          />
+        {groups.map((group) => (
+          <div key={group.pair?.id || group.exercises[0].originalName}>
+            {group.pair && <div className="adjustment-banner">
+              <TrendingUp size={18} />
+              <div><strong>Superset {pairs.indexOf(group.pair) + 1}</strong><p>{group.exercises.map((exercise) => exercise.name).join(' → ')} → rest</p></div>
+              <button type="button" className="text-button" onClick={() => onSupersetsChange(day, pairs.filter((pair) => pair.id !== group.pair.id))}>Unpair exercises</button>
+            </div>}
+            {group.exercises.map((exercise, memberIndex) => {
+              const index = exercises.findIndex((item) => item.originalName === exercise.originalName);
+              const partner = group.exercises[1 - memberIndex];
+              const targets = nextSessionSets(exercise, day, history, state, state.settings.weightUnit);
+              return <ExerciseCard
+                key={`${day}-${exercise.originalName}-${exercise.name}-${index}-${state.draftRevision || 0}`}
+                exercise={exercise}
+                index={index}
+                day={day}
+                unit={state.settings.weightUnit}
+                initialSets={targets}
+                superset={group.pair ? { id: group.pair.id, partner: partner.name, label: `${pairs.indexOf(group.pair) + 1}${memberIndex === 0 ? 'A' : 'B'}`, nextIndex: memberIndex === 0 ? exercises.findIndex((item) => item.originalName === partner.originalName) : null } : null}
+                history={history}
+                draft={state.drafts?.[`${day}|${exercise.name}`]}
+                onDraftChange={(draft) => onDraftChange(`${day}|${exercise.name}`, draft)}
+                onNewEntry={() => onDraftChange(`${day}|${exercise.name}`, { id: makeId(), sets: targets, rir: '2' })}
+                onSave={saveExercise}
+                onRest={onRest}
+                onSubstitute={(alternative) => setSubstitutions((current) => ({ ...current, [`${day}-${exercise.originalName}`]: alternative }))}
+              />;
+            })}
+          </div>
         ))}
       </div>
       <div className="programme-session-bar">
@@ -2279,6 +2367,8 @@ export default function App() {
         <Programme
           state={state}
           history={state.history}
+          onFreshWorkout={(day) => setState((current) => ({ ...current, draftRevision: safeNumber(current.draftRevision) + 1, drafts: Object.fromEntries(Object.entries(current.drafts || {}).filter(([key]) => !key.startsWith(`${day}|`))) }))}
+          onSupersetsChange={(day, pairs) => setState((current) => ({ ...current, supersets: { ...current.supersets, [day]: pairs } }))}
           onDraftChange={(key, draft) => setState((current) => ({ ...current, drafts: { ...current.drafts, [key]: draft } }))}
           onSave={saveExercise}
           onStartSession={(workoutDay) => startSession('train', workoutDay)}

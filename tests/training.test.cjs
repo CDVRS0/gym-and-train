@@ -72,3 +72,36 @@ test('indoor stairmaster can log time and calories without distance', () => {
 test('calorie totals omit missing values and retain zero', () => {
  assert.equal(context.cardioCalories([{calories:250},{calories:null},{},{calories:0},{calories:120}]),370);
 });
+test('next session builds reps independently for each completed set', () => {
+ const sets = context.nextSessionSets(exercise,'Chest',[entry([6,7,8,6])],{loads:{}},'kg');
+ assert.equal(sets.map(set=>set.reps).join(','),'7,8,8,7');
+ assert.ok(sets.every(set=>set.weight==='60' && !set.done));
+});
+test('load increase resets every rep field to range minimum', () => {
+ const sets=context.nextSessionSets(exercise,'Chest',[entry([8,8,8,8])],{loads:{}},'kg');
+ assert.ok(sets.every(set=>set.weight==='62.5' && set.reps==='6' && !set.done));
+});
+test('incomplete or low-RIR performance does not increase reps', () => {
+ assert.equal(context.nextSessionSets(exercise,'Chest',[entry([6,7,8])],{loads:{}}).map(set=>set.reps).join(','),'6,7,8,6');
+ assert.equal(context.nextSessionSets(exercise,'Chest',[entry([6,7,8,6],{rir:0})],{loads:{}}).map(set=>set.reps).join(','),'6,7,8,6');
+});
+test('reduced load resets rep targets and respects adjusted set count', () => {
+ const sets=context.nextSessionSets({...exercise,sets:2},'Chest',[entry([4,4,6,6])],{loads:{}});
+ assert.equal(sets.length,2);assert.ok(sets.every(set=>set.weight==='57'&&set.reps==='6'));
+});
+test('mixed loads retain each set weight when increasing reps', () => {
+ const previous=entry([6,7,6,8],{sets:[60,55,50,45].map((weight,i)=>({weight,reps:[6,7,6,8][i],done:true}))});
+ assert.equal(context.nextSessionSets(exercise,'Chest',[previous],{loads:{}}).map(set=>set.weight).join(','),'60,55,50,45');
+});
+test('supersets reject self pairing and overlapping pairs', () => {
+ const pairs=context.addSuperset([],'Bench','Curl','one');assert.equal(pairs.length,1);
+ assert.equal(context.addSuperset(pairs,'Bench','Row','two'),pairs);
+ assert.equal(context.addSuperset(pairs,'Row','Row','two'),pairs);
+});
+test('supersets render paired exercises together without duplicating cards', () => {
+ const exercises=['Bench','Row','Curl','Fly'].map(originalName=>({originalName,name:originalName}));
+ const groups=context.groupSupersets(exercises,[{id:'one',exercises:['Bench','Curl']}]);
+ assert.equal(groups[0].exercises.map(ex=>ex.name).join(','),'Bench,Curl');
+ assert.equal(groups.flatMap(group=>group.exercises).length,4);
+ assert.equal(context.groupSupersets(exercises,[{id:'bad',exercises:['Bench','Missing']}]).length,4);
+});

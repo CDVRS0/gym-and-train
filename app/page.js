@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 
 import GymCloudSync from '../components/GymCloudSync';
+import TrainingCoach from '../components/TrainingCoach';
 import { useGymCloudSync } from '../hooks/useGymCloudSync';
 import { GymSyncStatus } from '../components/GymCloudSync';
 
@@ -2063,6 +2064,7 @@ const NAV_ITEMS = [
   { name: 'Basketball', label: 'Basketball', icon: Activity },
   { name: 'Cardio', label: 'Cardio', icon: Footprints },
   { name: 'Progress', label: 'Progress', icon: BarChart3 },
+  { name: 'AI Coach', label: 'AI Coach', icon: Zap },
   { name: 'Settings', label: 'Settings', icon: Settings },
 ];
 
@@ -2403,6 +2405,8 @@ export default function App() {
     }
 
 
+    if (tab === 'AI Coach') return <TrainingCoach />;
+
     if (tab === 'Progress') {
       return (
         <Progress
@@ -2676,11 +2680,21 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             <div className="topbar-date"><CalendarDays size={15} /> {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
-            <button type="button" className="topbar-timer-button" onClick={() => {
+            <button type="button" className="topbar-timer-button" aria-label="Rest timer" onClick={() => {
               setTimerDuration(90);
               setTimerOpen(true);
             }}>
-              <TimerIcon size={16} /> Rest timer
+              <TimerIcon size={16} /><span>Rest timer</span>
+            </button>
+            <button
+              type="button"
+              className="topbar-settings-button"
+              onClick={() => setTab('Settings')}
+              aria-label="Settings"
+              aria-pressed={tab === 'Settings'}
+              title="Settings"
+            >
+              <Settings size={19} />
             </button>
           </div>
         </header>
@@ -2741,7 +2755,7 @@ export default function App() {
 
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
-        {NAV_ITEMS.slice(0, 5).map(({ name, label, icon: Icon }) => (
+        {NAV_ITEMS.slice(0, 6).map(({ name, label, icon: Icon }) => (
           <button
             type="button"
             key={name}
@@ -2821,6 +2835,8 @@ export default function App() {
         .topbar-breadcrumb strong { color: #e8edf7; font-weight: 650; }
         .topbar-actions { gap: 18px; }
         .topbar-date { font-size: 11px; color: #a0abc0; }
+        .topbar-settings-button { display: none; }
+        .topbar-settings-button:focus-visible { outline: 2px solid var(--os-blue-light); outline-offset: 3px; }
         .topbar-timer-button { display: flex; align-items: center; gap: 8px; padding: 9px 12px; color: #dbe8ff; background: rgba(57,132,255,.11); border: 1px solid rgba(57,132,255,.22); border-radius: 9px; font-size: 11px; font-weight: 650; }
         .content-area { width: 100%; max-width: 1500px; margin: 0 auto; padding: 30px 36px 28px; flex: 1; }
         .app-footer { display: flex; justify-content: space-between; gap: 12px; padding: 17px 36px; border-top: 1px solid var(--os-line); color: #58657a; font-size: 9px; letter-spacing: .13em; font-weight: 750; }
@@ -3113,6 +3129,8 @@ export default function App() {
           .topbar-breadcrumb { gap: 6px; font-size: 9px; }
           .topbar-actions { gap: 9px; }
           .topbar-date { display: none; }
+          .topbar-settings-button { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 1px solid var(--os-line); border-radius: 9px; background: #111b2a; color: #a9c8f7; }
+          .topbar-settings-button[aria-pressed="true"] { border-color: var(--os-blue); color: var(--os-blue-light); }
           .topbar-timer-button { padding: 8px 9px; font-size: 10px; }
           .content-area { padding: 17px 13px 22px; }
           .app-footer { padding: 14px; font-size: 7px; }
@@ -3180,7 +3198,7 @@ export default function App() {
           .chart-bar-track { height: 120px; }
           .settings-row { align-items: flex-start; flex-direction: column; gap: 12px; }
           .settings-row select, .settings-row input { max-width: none; }
-          .mobile-nav { position: fixed; z-index: 50; inset: auto 0 0; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); padding: 7px 4px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid var(--os-line); background: rgba(9,14,22,.96); backdrop-filter: blur(18px); }
+          .mobile-nav { position: fixed; z-index: 50; inset: auto 0 0; display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); padding: 7px 4px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid var(--os-line); background: rgba(9,14,22,.96); backdrop-filter: blur(18px); }
           .mobile-nav-item { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0; border: 0; color: #7d8ba2; background: transparent; font-size: 8px; }
           .mobile-nav-active { color: #8db8ff; }
           .mobile-nav-active svg { filter: drop-shadow(0 0 6px rgba(57,132,255,.3)); }
@@ -3188,6 +3206,11 @@ export default function App() {
           .timer-modal, .confirm-modal { padding: 19px; }
         }
 
+
+        @media (max-width: 380px) {
+          .topbar-timer-button { min-width: 44px; min-height: 44px; justify-content: center; }
+          .topbar-timer-button span { display: none; }
+        }
 
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

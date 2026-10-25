@@ -112,7 +112,7 @@ export default function GymCloudSync({ onSync }) {
       }
 
       await onSync?.();
-      setStatus('Cloud check complete. Resolve any data choice shown above.');
+      setStatus('Cloud check complete. Changes save automatically.');
     } catch (error) {
       setStatus(
         error.message ||
@@ -167,7 +167,7 @@ export default function GymCloudSync({ onSync }) {
             onClick={syncToCloud}
             disabled={busy}
           >
-            {busy ? 'Please wait...' : 'Sync training data'}
+            {busy ? 'Please wait...' : 'Check cloud connection'}
           </button>
 
           <button
@@ -229,11 +229,11 @@ export default function GymCloudSync({ onSync }) {
 }
 export function GymSyncStatus({ status }) {
   const labels = {
-    loading: 'Synchronising…',
-    synced: 'Cloud changes saved',
-    offline: 'Cloud inactive — browser storage in use',
-    error: 'Sync failed — check your connection',
-    'needs-decision': 'Choose which data to keep',
+    loading: 'Saving to cloud…',
+    synced: 'Saved to cloud',
+    offline: 'Offline — cloud save unavailable',
+    error: 'Not saved — retry your cloud connection',
+    'signed-out': 'Sign in to load your cloud history',
   };
 
   return (

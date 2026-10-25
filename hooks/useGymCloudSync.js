@@ -5,170 +5,178 @@ import { supabase } from '../lib/supabase';
 
 const TABLE = 'gym_app_state';
 
-export function useGymCloudSync({ state, setState, loaded }) {
+export function useGymCloudSync({ state, setState, loaded, createEmptyState, onRecovered }) {
   const [user, setUser] = useState(null);
-  const [syncStatus, setSyncStatus] = useState('offline');
-  const [conflict, setConflict] = useState(null);
+  const [syncStatus, setSyncStatus] = useState('loading');
+  const [cloudReady, setCloudReady] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [revision, setRevision] = useState(0);
   const stateRef = useRef(state);
   const userRef = useRef(null);
   const ready = useRef(false);
   const generation = useRef(0);
   const lastCloud = useRef(null);
+  const cloudVersion = useRef(null);
   const saving = useRef(false);
   const pending = useRef(false);
+  const paused = useRef(false);
   stateRef.current = state;
-
-  const fetchCloud = useCallback(async (id) => {
-    const { data, error } = await supabase.from(TABLE).select('state').eq('user_id', id).maybeSingle();
-    if (error) throw error;
-    return data?.state ?? null;
-  }, []);
-
-  const writeCloud = useCallback(async (id, snapshot) => {
-    const { error } = await supabase.from(TABLE).upsert({ user_id: id, state: snapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-    if (error) throw error;
-  }, []);
 
   const recover = useCallback(async (nextUser) => {
     const token = ++generation.current;
     ready.current = false;
+    paused.current = false;
+    setCloudReady(false);
     userRef.current = nextUser;
     setUser(nextUser);
-    setConflict(null);
+    setErrorMessage('');
     lastCloud.current = null;
-    if (!supabase || !nextUser) { setSyncStatus('offline'); return; }
+    cloudVersion.current = null;
+    // Never display a previous account's data or read a device workout snapshot.
+    const initial = createEmptyState();
+    stateRef.current = initial;
+    setState(initial);
+    if (!supabase || !nextUser) { setSyncStatus('signed-out'); return; }
     setSyncStatus('loading');
     try {
-      const cloud = await fetchCloud(nextUser.id);
+      const { data, error } = await supabase.from(TABLE).select('state,updated_at').eq('user_id', nextUser.id).abortSignal(AbortSignal.timeout(10000)).maybeSingle();
+      if (error) throw error;
       if (token !== generation.current) return;
-      if (cloud && (!Array.isArray(cloud.history) || !Array.isArray(cloud.sessions) || !cloud.settings)) {
-        throw new Error('Cloud data has an unsupported format. Local data has been kept.');
+      const cloud = data?.state;
+      if (data && (!cloud || !Array.isArray(cloud.history) || !Array.isArray(cloud.sessions) || !cloud.settings)) {
+        throw new Error('Cloud history could not be read safely. No data has been replaced.');
       }
-      if (JSON.stringify(cloud) !== JSON.stringify(stateRef.current)) {
-        setConflict({ cloud });
-        setSyncStatus('needs-decision');
-        return;
-      }
-      lastCloud.current = JSON.stringify(cloud);
+      const restored = cloud ? { ...initial, ...cloud, drafts: cloud.drafts || {}, runLogs: cloud.runLogs || [], bbLogs: cloud.bbLogs || [], water: cloud.water || {}, loads: cloud.loads || {}, settings: { ...initial.settings, ...cloud.settings } } : initial;
+      stateRef.current = restored;
+      setState(restored);
+      onRecovered?.(restored);
+      lastCloud.current = JSON.stringify(restored);
+      cloudVersion.current = data?.updated_at ?? null;
       ready.current = true;
+      setCloudReady(true);
       setSyncStatus('synced');
-      setRevision((n) => n + 1);
+      setRevision(n => n + 1);
     } catch (error) {
       if (token !== generation.current) return;
-      // A failed read must never authorize an upload over an unknown cloud state.
-      console.error('Cloud recovery failed:', error);
+      setErrorMessage(error.message || 'Could not load cloud history.');
       setSyncStatus('error');
     }
-  }, [fetchCloud]);
+  }, [createEmptyState, onRecovered, setState]);
 
-  const resolveConflict = useCallback(async (choice) => {
-    const currentUser = userRef.current;
-    if (!conflict || !currentUser || (choice !== 'local' && choice !== 'cloud')) return;
-    const token = ++generation.current;
-    ready.current = false;
-    setSyncStatus('loading');
-    try {
-      if (choice === 'cloud') {
-        // Preserve edits made while the decision was visible before replacing them.
-        localStorage.setItem(`gym-training-os-v8-before-cloud-${Date.now()}`, JSON.stringify(stateRef.current));
-        const cloud = conflict.cloud;
-        if (!cloud) throw new Error('Cloud data is unavailable.');
-        const restored = { ...stateRef.current, ...cloud, drafts: cloud.drafts || {}, runLogs: cloud.runLogs || [], bbLogs: cloud.bbLogs || [], water: cloud.water || {}, loads: cloud.loads || {}, settings: { ...stateRef.current.settings, ...cloud.settings } };
-        stateRef.current = restored;
-        setState(restored);
-        lastCloud.current = JSON.stringify(restored);
-      } else {
-        // Use the latest browser edits, not the snapshot taken when recovery began.
-        const snapshot = stateRef.current;
-        await writeCloud(currentUser.id, snapshot);
-        if (token !== generation.current) return;
-        lastCloud.current = JSON.stringify(snapshot);
-      }
-      ready.current = true;
-      setConflict(null);
-      setSyncStatus('synced');
-      setRevision((n) => n + 1);
-    } catch (error) {
-      if (token !== generation.current) return;
-      console.error('Cloud recovery decision failed:', error);
-      setSyncStatus('error');
-    }
-  }, [conflict, setState, writeCloud]);
-
-  // All automatic writes, including reconnects, pass through this one queue.
   const flush = useCallback(async () => {
-    if (!ready.current || !userRef.current || !supabase) return;
+    if (!ready.current || !userRef.current || !supabase || paused.current) return;
     if (!navigator.onLine) { setSyncStatus('offline'); return; }
     if (saving.current) { pending.current = true; return; }
     saving.current = true;
+    const startedGeneration = generation.current;
     try {
       do {
         pending.current = false;
         const currentUser = userRef.current;
-        const token = generation.current;
-        if (!ready.current || !currentUser) break;
+        if (!ready.current || !currentUser || generation.current !== startedGeneration) break;
         const snapshot = stateRef.current;
         const json = JSON.stringify(snapshot);
         if (json === lastCloud.current) { setSyncStatus('synced'); break; }
         setSyncStatus('loading');
-        await writeCloud(currentUser.id, snapshot);
-        if (token !== generation.current) break;
+        const version = cloudVersion.current;
+        const updatedAt = new Date(Math.max(Date.now(), version ? Date.parse(version) + 1 : 0)).toISOString();
+        const payload = { state: snapshot, updated_at: updatedAt };
+        // Conditional writes prevent an older open device replacing newer history.
+        const result = version
+          ? await supabase.from(TABLE).update(payload).eq('user_id', currentUser.id).eq('updated_at', version).select('updated_at').abortSignal(AbortSignal.timeout(10000)).maybeSingle()
+          : await supabase.from(TABLE).insert({ user_id: currentUser.id, ...payload }).select('updated_at').abortSignal(AbortSignal.timeout(10000)).single();
+        if (generation.current !== startedGeneration) break;
+        if (result.error) {
+          if (result.error.code === '23505') paused.current = true;
+          throw result.error;
+        }
+        if (!result.data) {
+          paused.current = true;
+          throw new Error('Cloud data changed on another device. Download unsaved changes, then reload cloud history.');
+        }
+        cloudVersion.current = result.data.updated_at;
         lastCloud.current = json;
+        setErrorMessage('');
         setSyncStatus('synced');
         pending.current = json !== JSON.stringify(stateRef.current);
       } while (pending.current);
     } catch (error) {
-      console.error('Cloud save failed:', error);
+      if (generation.current !== startedGeneration) return;
+      setErrorMessage(error.message || 'Cloud save failed. Keep this app open and retry.');
       setSyncStatus('error');
-    } finally {
-      saving.current = false;
-    }
-  }, [writeCloud]);
+    } finally { saving.current = false; }
+  }, []);
 
   useEffect(() => {
-    if (!loaded || !supabase) return;
+    if (!loaded) return;
+    if (!supabase) { setSyncStatus('error'); setErrorMessage('Cloud sign-in is not configured.'); return; }
     let active = true;
     let initialized = false;
-    const onSession = (nextUser) => {
-      if (!active) return;
-      if (initialized && userRef.current?.id === nextUser?.id) return;
+    const onSession = nextUser => {
+      if (!active || (initialized && userRef.current?.id === nextUser?.id)) return;
       initialized = true;
-      recover(nextUser);
+      void recover(nextUser);
     };
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setTimeout(() => onSession(session?.user ?? null), 0);
     });
     supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return;
-      if (error) { setSyncStatus('error'); return; }
+      if (error) { setSyncStatus('error');setErrorMessage('Could not restore cloud sign-in.');return; }
       onSession(data.session?.user ?? null);
-    }).catch(() => { if (active) setSyncStatus('error'); });
-    return () => {
-      active = false;
-      subscription.unsubscribe();
-      generation.current += 1;
-      ready.current = false;
-    };
+    }).catch(() => { if (active) {setSyncStatus('error');setErrorMessage('Could not restore cloud sign-in.');} });
+    return () => { active = false; subscription.unsubscribe(); generation.current += 1; ready.current = false; };
   }, [loaded, recover]);
 
   useEffect(() => {
-    if (!loaded || !ready.current || conflict) return;
-    const timer = setTimeout(flush, 1000);
+    if (!loaded || !ready.current) return;
+    const timer = setTimeout(flush, 150);
     return () => clearTimeout(timer);
-  }, [state, loaded, conflict, revision, flush]);
+  }, [state, loaded, revision, flush]);
 
   useEffect(() => {
-    const online = () => { if (ready.current) flush(); else if (userRef.current) recover(userRef.current); };
+    const reconnect = async () => {
+      const currentUser = userRef.current;
+      if (!currentUser) return;
+      if (!ready.current) { void recover(currentUser); return; }
+      if (saving.current || JSON.stringify(stateRef.current) !== lastCloud.current) { void flush(); return; }
+      const token = generation.current;
+      try {
+        const { data, error } = await supabase.from(TABLE).select('updated_at').eq('user_id', currentUser.id).abortSignal(AbortSignal.timeout(10000)).maybeSingle();
+        if (token !== generation.current) return;
+        if (error) throw error;
+        // Keep untouched forms mounted when this account's cloud data is unchanged.
+        if ((data?.updated_at ?? null) !== cloudVersion.current) void recover(currentUser);
+        else setSyncStatus('synced');
+      } catch (error) {
+        if (token === generation.current) { setErrorMessage(error.message || 'Could not refresh cloud history.');setSyncStatus('error'); }
+      }
+    };
     const offline = () => setSyncStatus('offline');
-    window.addEventListener('online', online);
+    const visibility = () => {
+      if (document.visibilityState === 'hidden') void flush();
+      else reconnect();
+    };
+    const beforeUnload = event => {
+      if (ready.current && (saving.current || JSON.stringify(stateRef.current) !== lastCloud.current)) {
+        event.preventDefault();event.returnValue = '';
+      }
+    };
+    window.addEventListener('online', reconnect);
     window.addEventListener('offline', offline);
-    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+    window.addEventListener('beforeunload', beforeUnload);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      window.removeEventListener('online', reconnect);window.removeEventListener('offline', offline);
+      window.removeEventListener('beforeunload', beforeUnload);document.removeEventListener('visibilitychange', visibility);
+    };
   }, [flush, recover]);
 
   const retrySync = useCallback(async () => {
     if (ready.current) await flush();
     else await recover(userRef.current);
   }, [flush, recover]);
-  return { user, syncStatus, conflict, resolveConflict, retrySync };
+  const reloadCloud = useCallback(() => recover(userRef.current), [recover]);
+  const visibleStatus = cloudReady && syncStatus === 'synced' && JSON.stringify(state) !== lastCloud.current ? 'loading' : syncStatus;
+  return { user, syncStatus: visibleStatus, cloudReady, errorMessage, retrySync, reloadCloud };
 }

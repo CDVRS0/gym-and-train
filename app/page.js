@@ -398,45 +398,6 @@ function dateDaysAgo(days) {
 }
 
 
-function readState() {
-  if (typeof window === 'undefined') return emptyState();
-
-
-  try {
-    const raw = localStorage.getItem(STORAGE);
-    if (!raw) return emptyState();
-
-
-    const parsed = JSON.parse(raw);
-    return {
-      ...emptyState(),
-      ...parsed,
-      settings: {
-        ...emptyState().settings,
-        ...(parsed.settings || {}),
-      },
-      drafts: parsed.drafts && typeof parsed.drafts === 'object' ? parsed.drafts : {},
-      history: Array.isArray(parsed.history) ? parsed.history : [],
-      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-      runLogs: Array.isArray(parsed.runLogs) ? parsed.runLogs : [],
-      bbLogs: Array.isArray(parsed.bbLogs) ? parsed.bbLogs : [],
-      water: typeof parsed.water === 'number'
-        ? { [today()]: Math.max(0, parsed.water) }
-        : parsed.water && typeof parsed.water === 'object' && !Array.isArray(parsed.water)
-          ? parsed.water
-          : {},
-      loads: parsed.loads && typeof parsed.loads === 'object' && !Array.isArray(parsed.loads) ? parsed.loads : {},
-    };
-  } catch {
-    try {
-      const raw = localStorage.getItem(STORAGE);
-      if (raw) localStorage.setItem(`${STORAGE}-recovery-${Date.now()}`, raw);
-    } catch { /* Original storage remains available if recovery cannot be written. */ }
-    return emptyState();
-  }
-}
-
-
 function getExerciseHistory(history, exercise, day) {
   return (history || [])
     .filter((item) => item.exercise === exercise && (!day || item.day === day))
@@ -2027,8 +1988,7 @@ function SettingsPage({ state, setState, syncStatus, retrySync, onReset, }) {
           <div>
             <h3>Reset training data</h3>
             <p>
-              Delete locally stored workouts, logs,
-              hydration and settings.
+              Reset your cloud workouts, logs, hydration and settings on all devices.
             </p>
           </div>
         </div>
@@ -2047,10 +2007,7 @@ function SettingsPage({ state, setState, syncStatus, retrySync, onReset, }) {
         <ShieldCheck size={17} />
 
         <span>
-          Your training data is stored locally on this
-          device unless you choose to synchronise it
-          with CDVRS AI. Cloud synchronisation requires
-          authentication.
+          Your training data loads from your signed-in cloud account and saves automatically. Wait for “Saved to cloud” before closing. Device-only history is not used.
         </span>
       </div>
     </div>
@@ -2082,59 +2039,29 @@ export default function App() {
   const [sessionClock, setSessionClock] = useState(Date.now());
   const [confirmReset, setConfirmReset] = useState(false);
   const [notice, setNotice] = useState('');
-  const {
-  user: cloudUser,
-  syncStatus,
-  conflict,
-  resolveConflict,
-  retrySync,
-} = useGymCloudSync({
-  state,
-  setState,
-  loaded,
-});
-
-
-  useEffect(() => {
-    const saved = readState();
-    setState(saved);
-    setTab(NAV_ITEMS.some((item) => item.name === saved.lastTab) ? saved.lastTab : 'Home');
-    try {
-      const runtime = JSON.parse(localStorage.getItem(`${STORAGE}-session`) || 'null');
-      if (runtime?.activeSession?.id) {
-        setActiveSession(runtime.activeSession);
-        setElapsedSeconds(Math.max(0, safeNumber(runtime.elapsedSeconds)));
-        setSessionRunning(Boolean(runtime.sessionRunning && runtime.activeSession.startedAt));
-      }
-    } catch { /* Invalid device clock does not prevent recovery of training data. */ }
+  const restoreCloudRuntime = useCallback((saved) => {
+    setTab(NAV_ITEMS.some(item => item.name === saved.lastTab) ? saved.lastTab : 'Home');
+    const runtime = saved.activeWorkout;
+    setActiveSession(runtime?.activeSession?.id ? runtime.activeSession : null);
+    setElapsedSeconds(Math.max(0, safeNumber(runtime?.elapsedSeconds)));
+    setSessionRunning(Boolean(runtime?.sessionRunning && runtime?.activeSession?.startedAt));
     setRuntimeLoaded(true);
-    setLoaded(true);
   }, []);
+  const { user: cloudUser, syncStatus, cloudReady, errorMessage, retrySync, reloadCloud } = useGymCloudSync({
+    state, setState, loaded, createEmptyState: emptyState, onRecovered: restoreCloudRuntime,
+  });
 
-
-  useEffect(() => {
-    if (!loaded || typeof window === 'undefined') return;
-
-
-    try {
-      localStorage.setItem(STORAGE, JSON.stringify(state));
-    } catch (error) {
-      console.error('Unable to save training data:', error);
-      setNotice('Unable to save data. Your browser storage may be full.');
-    }
-  }, [state, loaded]);
+  useEffect(() => { setLoaded(true); }, []);
 
   useEffect(() => {
-    if (loaded) setState((current) => current.lastTab === tab ? current : { ...current, lastTab: tab });
-  }, [tab, loaded]);
+    if (cloudReady) setState(current => current.lastTab === tab ? current : { ...current, lastTab: tab });
+  }, [tab, cloudReady]);
 
   useEffect(() => {
-    if (!runtimeLoaded) return;
-    try {
-      localStorage.setItem(`${STORAGE}-session`, JSON.stringify({ activeSession, elapsedSeconds, sessionRunning }));
-    } catch { setNotice('Unable to save the active timer. Keep this page open.'); }
-  }, [activeSession, elapsedSeconds, sessionRunning, runtimeLoaded]);
-
+    if (!cloudReady || !runtimeLoaded) return;
+    const activeWorkout = { activeSession, elapsedSeconds, sessionRunning };
+    setState(current => JSON.stringify(current.activeWorkout) === JSON.stringify(activeWorkout) ? current : { ...current, activeWorkout });
+  }, [activeSession, elapsedSeconds, sessionRunning, runtimeLoaded, cloudReady]);
 
   useEffect(() => {
     if (!sessionRunning || !activeSession) return undefined;
@@ -2211,7 +2138,7 @@ export default function App() {
     });
 
 
-    setNotice('Exercise saved to your training history.');
+    setNotice('Saving exercise to cloud…');
   }, [activeSession?.id]);
 
 
@@ -2328,12 +2255,7 @@ export default function App() {
     setTab('Home');
 
 
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(STORAGE);
-    }
-
-
-    setNotice('Training data reset.');
+    setNotice('Saving reset to cloud…');
   };
 
 
@@ -2616,6 +2538,20 @@ export default function App() {
   }
 
 
+  if (!cloudUser || !cloudReady || syncStatus === 'error' || syncStatus === 'offline') {
+    return <main className="app-shell"><section className="panel" style={{ maxWidth: 620, margin: '40px auto', padding: 24 }}>
+      <h2>{!cloudUser ? 'Sign in to Training OS' : cloudReady ? 'Cloud connection needs attention' : 'Loading cloud history'}</h2>
+      <p>Training OS uses your cloud history and saves changes automatically. An internet connection is required.</p>
+      {errorMessage && <p role="alert">{errorMessage}</p>}
+      {cloudUser && <><GymSyncStatus status={syncStatus} /><button className="button" onClick={retrySync}>Retry cloud connection</button>
+        {cloudReady && <><p>Your latest changes are not confirmed saved. Keep this app open until “Saved to cloud”.</p>
+          <button className="button button-secondary" onClick={() => downloadBackup(state)}>Download unsaved changes</button>
+          <button className="button button-secondary" onClick={() => { if (window.confirm('Discard unsaved changes on this screen and reload your saved cloud history?')) void reloadCloud(); }}>Reload cloud history</button></>}
+      </>}
+      <GymCloudSync onSync={retrySync} />
+    </section></main>;
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -2663,7 +2599,7 @@ export default function App() {
 
         <div className="sidebar-footer">
           <div className="user-avatar">C</div>
-          <div><strong>Training OS</strong><span>Local profile</span></div>
+          <div><strong>Training OS</strong><span>{cloudUser?.email || "Cloud account"}</span></div>
           <button type="button" className="sidebar-settings-button" onClick={() => setTab('Settings')} aria-label="Settings">
             <Settings size={17} />
           </button>
@@ -2701,13 +2637,7 @@ export default function App() {
 
 
         <div className="content-area">
-          {conflict && <section className="panel" role="alert">
-            <h3>Choose your training data</h3>
-            <p>This browser and your cloud account have different data. Download a backup before choosing a version.</p>
-            <button className="button button-secondary" onClick={() => downloadBackup({ local: state, cloud: conflict.cloud })}>Download both versions</button>
-            <button className="button button-primary" onClick={() => resolveConflict('local')}>Keep this browser</button>
-            {conflict.cloud && <button className="button button-secondary" onClick={() => resolveConflict('cloud')}>Use cloud data</button>}
-          </section>}
+          <GymSyncStatus status={syncStatus} />
           {renderPage()}
         </div>
 
@@ -2735,7 +2665,7 @@ export default function App() {
           <div className="confirm-modal">
             <div className="confirm-icon"><AlertCircle size={24} /></div>
             <h2>Reset all training data?</h2>
-            <p>This permanently deletes your saved workout history, basketball logs, running logs, hydration and preferences from this browser.</p>
+            <p>This permanently deletes your saved workout history, basketball logs, running logs, hydration and preferences from your cloud account on all devices.</p>
             <div className="confirm-actions">
               <button type="button" className="button button-secondary" onClick={() => setConfirmReset(false)}>Cancel</button>
               <button type="button" className="button button-danger" onClick={resetAll}>Delete all data</button>

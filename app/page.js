@@ -2539,11 +2539,11 @@ export default function App() {
 
 
   if (!cloudUser || !cloudReady || syncStatus === 'error' || syncStatus === 'offline') {
-    return <main className="app-shell" style={{ padding: 24 }}><TrainingStyles /><section className="panel" style={{ maxWidth: 620, margin: '40px auto', padding: 24 }}>
+    return <main className="app-shell" style={{ padding: 24 }}><TrainingStyles /><section className="panel cloud-account-gate" style={{ maxWidth: 620, margin: '40px auto', padding: 24 }}>
       <h2>{!cloudUser ? 'Sign in to Training OS' : cloudReady ? 'Cloud connection needs attention' : 'Loading cloud history'}</h2>
       <p>Training OS uses your cloud history and saves changes automatically. An internet connection is required.</p>
       {errorMessage && <p role="alert">{errorMessage}</p>}
-      {cloudUser && <><GymSyncStatus status={syncStatus} /><button className="button" onClick={retrySync}>Retry cloud connection</button>
+      {cloudUser && <><GymSyncStatus status={syncStatus} /><button className="button button-primary" onClick={retrySync}>Retry cloud connection</button>
         {cloudReady && <><p>Your latest changes are not confirmed saved. Keep this app open until “Saved to cloud”.</p>
           <button className="button button-secondary" onClick={() => downloadBackup(state)}>Download unsaved changes</button>
           <button className="button button-secondary" onClick={() => { if (window.confirm('Discard unsaved changes on this screen and reload your saved cloud history?')) void reloadCloud(); }}>Reload cloud history</button></>}
@@ -2808,6 +2808,7 @@ function TrainingStyles() {
         .hero-ring-two { width: 310px; height: 310px; border-style: dashed; opacity: .65; }
         .hero-art-label { position: absolute; bottom: 23px; right: 24px; color: rgba(159,190,244,.52); font-size: 8px; letter-spacing: .18em; }
         .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 39px; padding: 10px 14px; border: 1px solid transparent; border-radius: 9px; font-size: 11px; font-weight: 750; transition: .18s ease; }
+        .cloud-account-gate p { margin: 12px 0; line-height: 1.65; color: var(--os-muted); }
         .button-primary { color: white; background: var(--os-blue); box-shadow: 0 5px 17px rgba(57,132,255,.14); }
         .button-primary:hover { background: #5594ff; transform: translateY(-1px); }
         .button-light { color: #0c1524; background: #eaf2ff; }

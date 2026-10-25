@@ -163,7 +163,7 @@ export default function GymCloudSync({ onSync }) {
 
           <button
             type="button"
-            className="button"
+            className="button button-secondary"
             onClick={syncToCloud}
             disabled={busy}
           >
@@ -172,7 +172,7 @@ export default function GymCloudSync({ onSync }) {
 
           <button
             type="button"
-            className="button"
+            className="button button-secondary"
             onClick={signOut}
             disabled={busy}
             style={{ marginLeft: 8 }}
@@ -187,7 +187,7 @@ export default function GymCloudSync({ onSync }) {
               <input id="gym-new-password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={e => setPassword(e.target.value)} style={{ display: 'block', marginBottom: 10 }} />
               <label htmlFor="gym-confirm-password">Confirm password</label>
               <input id="gym-confirm-password" type="password" autoComplete="new-password" required value={confirmation} onChange={e => setConfirmation(e.target.value)} style={{ display: 'block', marginBottom: 10 }} />
-              <button type="submit" className="button" disabled={busy}>Save password</button>
+              <button type="submit" className="button button-primary" disabled={busy}>Save password</button>
             </form>
           </details>
         </>
@@ -213,8 +213,8 @@ export default function GymCloudSync({ onSync }) {
 
           <label htmlFor="gym-cloud-password" style={{ display: 'block', marginBottom: 8 }}>Password</label>
           <input id="gym-cloud-password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} style={{ display: 'block', marginBottom: 10 }} />
-          <button type="submit" className="button" disabled={busy}>{busy ? 'Please wait...' : 'Sign in with password'}</button>
-          <button type="button" className="button" disabled={busy} onClick={() => void signIn(true)} style={{ marginLeft: 8 }}>Set up or forgot password?</button>
+          <button type="submit" className="button button-primary" disabled={busy}>{busy ? 'Please wait...' : 'Sign in with password'}</button>
+          <button type="button" className="button button-secondary" disabled={busy} onClick={() => void signIn(true)} style={{ marginLeft: 8 }}>Set up or forgot password?</button>
           <p>Use your existing account email. For first-time password setup, the email link opens Safari; set your password there, then sign in here.</p>
         </form>
       )}

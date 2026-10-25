@@ -2539,7 +2539,7 @@ export default function App() {
 
 
   if (!cloudUser || !cloudReady || syncStatus === 'error' || syncStatus === 'offline') {
-    return <main className="app-shell"><section className="panel" style={{ maxWidth: 620, margin: '40px auto', padding: 24 }}>
+    return <main className="app-shell" style={{ padding: 24 }}><TrainingStyles /><section className="panel" style={{ maxWidth: 620, margin: '40px auto', padding: 24 }}>
       <h2>{!cloudUser ? 'Sign in to Training OS' : cloudReady ? 'Cloud connection needs attention' : 'Loading cloud history'}</h2>
       <p>Training OS uses your cloud history and saves changes automatically. An internet connection is required.</p>
       {errorMessage && <p role="alert">{errorMessage}</p>}
@@ -2699,7 +2699,12 @@ export default function App() {
       </nav>
 
 
-      <style jsx global>{`
+      <TrainingStyles />
+    </div>
+  );
+}
+function TrainingStyles() {
+  return <style jsx global>{`
         :root {
           --os-bg: #080b12;
           --os-panel: #101722;
@@ -3145,7 +3150,5 @@ export default function App() {
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
         }
-      `}</style>
-    </div>
-  );
+      `}</style>;
 }

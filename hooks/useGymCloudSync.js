@@ -145,6 +145,8 @@ export function useGymCloudSync({ state, setState, loaded, createEmptyState, onR
         const { data, error } = await supabase.from(TABLE).select('updated_at').eq('user_id', currentUser.id).abortSignal(AbortSignal.timeout(10000)).maybeSingle();
         if (token !== generation.current) return;
         if (error) throw error;
+        // An edit may have arrived while the foreground read was in flight.
+        if (saving.current || JSON.stringify(stateRef.current) !== lastCloud.current) { void flush(); return; }
         // Keep untouched forms mounted when this account's cloud data is unchanged.
         if ((data?.updated_at ?? null) !== cloudVersion.current) void recover(currentUser);
         else setSyncStatus('synced');

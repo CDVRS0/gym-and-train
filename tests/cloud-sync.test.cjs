@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname,'../hooks/useGymCloudSync.js'),'utf8').replace(/^import .*;\n/gm,'').replace('export function useGymCloudSync','function useGymCloudSync');
 const baseline = () => ({history:[],sessions:[],settings:{weightUnit:'kg'},runLogs:[],bbLogs:[],drafts:{},water:{},loads:{}});
-function harness({cloud=baseline(),local=baseline(),readError=null,write=async()=>null}={}) {
+function harness({cloud=baseline(),local=baseline(),readError=null,read=async()=>{},write=async()=>null}={}) {
  let state=local,slots=[],index=0,effects=[],dirty=false,result,authCallback,reads=0,now=1;
  let remote=cloud?{state:cloud,updated_at:'2026-10-25T01:00:00.000Z'}:null;
  const writes=[],timers=new Map(),listeners={},documentListeners={};let timerId=0;
@@ -23,7 +23,7 @@ function harness({cloud=baseline(),local=baseline(),readError=null,write=async()
     assert.equal(table,'gym_app_state');let operation='read',payload,version,user;
     const finish=async()=>{
      assert.ok(user==='user-one'||user==='user-two');
-     if(operation==='read'){reads++;return {data:remote,error:readError};}
+     if(operation==='read'){reads++;await read(reads);return {data:remote,error:readError};}
      writes.push({user,payload,operation,version});const error=await write(payload,writes.length);
      if(error)return {data:null,error};
      if(operation==='insert'&&remote)return {data:null,error:{code:'23505',message:'Already exists'}};
@@ -78,4 +78,10 @@ test('clean foreground refresh loads latest cloud history and dirty unload warns
 });
 test('cloud restores missing optional collections from defaults',async()=>{
  const h=harness({cloud:{history:[],sessions:[],settings:{weightUnit:'lb'}}});await h.settle();assert.equal(h.state.settings.weightUnit,'lb');assert.ok(Array.isArray(h.state.runLogs));
+});
+
+test('an edit made during a foreground cloud read is never discarded',async()=>{
+ let release;const h=harness({read:async count=>{if(count===2)await new Promise(resolve=>release=resolve);}});await h.settle();await h.foreground();
+ await h.change({history:[{id:'newly-entered'}]});h.setRemote({state:{...baseline(),history:[{id:'other-device'}]},updated_at:'2026-10-25T02:00:00.000Z'});release();await h.settle();
+ assert.equal(h.state.history[0].id,'newly-entered');assert.equal(h.result.syncStatus,'error');assert.equal(h.remote.state.history[0].id,'other-device');
 });

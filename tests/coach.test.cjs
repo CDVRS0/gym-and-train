@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 function handler(env, fetch) {
- const source = fs.readFileSync(require('node:path').join(__dirname,'../app/api/coach/route.js'),'utf8').replace('export async function POST','async function POST');
+ const source = fs.readFileSync(require('node:path').join(__dirname,'../app/api/coach/route.js'),'utf8').replace('export const maxDuration = 120;','').replace('export async function POST','async function POST');
  return vm.runInNewContext(source+'; POST;', { process:{env}, fetch, Response, URL, AbortSignal });
 }
 const request = (body, auth = 'Bearer user-token') => new Request('http://localhost/api/coach',{method:'POST',headers:auth ? {Authorization:auth} : {},body:JSON.stringify(body)});
@@ -25,4 +25,10 @@ test('coach rejects non-HTTPS targets in production',async()=>{
 test('coach rejects oversized input and propagates central auth failure',async()=>{
  const post=handler({CDVRS_AI_URL:'https://ai.example'},async()=>Response.json({error:'Sign in'},{status:401}));
  assert.equal((await post(request({message:'x'.repeat(8001)}))).status,400);assert.equal((await post(request({message:'Hi'}))).status,401);
+});
+
+
+test('malformed coach JSON is rejected before contacting the central backend',async()=>{
+ let called=false;const post=handler({CDVRS_AI_URL:'https://ai.example'},()=>{called=true;});
+ const r=await post(new Request('http://local',{method:'POST',headers:{Authorization:'Bearer token'},body:'bad JSON'}));assert.equal(r.status,400);assert.equal(called,false);
 });

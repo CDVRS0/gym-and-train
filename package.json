@@ -8,8 +8,9 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
     "lucide-react": "latest",
-    "next": "latest",
+    "next": "16.4.3",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "suncalc": "2.1.1"
   }
 }

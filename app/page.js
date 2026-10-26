@@ -2359,18 +2359,13 @@ export default function App() {
         <div className="dashboard-hero">
           <div className="dashboard-hero-content">
             <div className="eyebrow"><span className="live-dot" /> YOUR TRAINING SYSTEM</div>
-            <h1>Train with<br /><span>intention.</span></h1>
+            <h1>How will you <span>move today?</span></h1>
             <p>Strength, basketball and recovery. One system built around your progress.</p>
             <button type="button" className="button button-light" onClick={() => setTab('Programme')}>
               Start training <ArrowRight size={17} />
             </button>
           </div>
-          <div className="dashboard-hero-art">
-            <div className="hero-ring hero-ring-one" />
-            <div className="hero-ring hero-ring-two" />
-            <Dumbbell size={94} strokeWidth={1.15} />
-            <span className="hero-art-label">BUILD / RECOVER / REPEAT</span>
-          </div>
+
         </div>
 
 

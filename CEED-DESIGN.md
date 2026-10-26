@@ -17,3 +17,5 @@ is selected again. Appearance preference is stored per browser/app; business,
 Planner and training records continue using existing cloud sync.
 
 This work is on an isolated feature branch and is presented in Preview first.
+
+The follow-up layout pass uses CEED's open greeting area instead of the illustrated hero, limits the content width, softens type weights, and replaces remaining hardcoded dark statistic and programme surfaces. Training programmes, logs, timers, cloud history and AI Coach remain on the existing components.

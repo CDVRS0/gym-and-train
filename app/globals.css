@@ -30,3 +30,38 @@
 .training-coach .coach-prompts button { background: #141e2d; color: #b7c9e5; border: 1px solid #30435e; }
 .training-coach .coach-prompts button:hover { background: #1c2c43; border-color: #527eb6; }
 @media (max-width: 760px) { .training-coach { padding-bottom: 38px; } }
+
+/* CEED GYM shares CEED's open workspace and quiet, translucent surfaces. */
+html[data-theme] .app-shell .content-area { max-width: 1120px; padding: 36px 40px; }
+html[data-theme] .app-shell .page-stack { gap: 28px; }
+html[data-theme] .app-shell .dashboard-hero { min-height: 0; padding: 20px 0 6px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+html[data-theme] .app-shell .dashboard-hero-content { padding: 0; max-width: 680px; }
+html[data-theme] .app-shell .dashboard-hero .eyebrow { color: var(--ceed-muted); font-weight: 450; font-size: 9px; }
+html[data-theme] .app-shell .dashboard-hero h1 { color: var(--ceed-text); font-weight: 450; font-size: clamp(32px, 3.7vw, 46px); line-height: 1.1; letter-spacing: -.055em; margin: 22px 0 16px; }
+html[data-theme] .app-shell .dashboard-hero h1 span { color: var(--ceed-accent); }
+html[data-theme] .app-shell .dashboard-hero p { font-size: 13px; max-width: 460px; }
+html[data-theme] .app-shell .button-light { background: var(--ceed-solid); color: var(--ceed-on-accent); border-color: transparent; border-radius: 12px; }
+html[data-theme] .app-shell .panel,html[data-theme] .app-shell .stat-card,html[data-theme] .app-shell .exercise-card { background: var(--ceed-panel); color: var(--ceed-text); border-color: var(--ceed-line); border-radius: 20px; box-shadow: none; }
+html[data-theme] .app-shell .stat-card-accent { background: var(--ceed-raised); border-color: var(--ceed-line); }
+html[data-theme] .app-shell .stat-value { color: var(--ceed-text); font-weight: 500; }
+html[data-theme] .app-shell .stat-top,html[data-theme] .app-shell .stat-detail { color: var(--ceed-muted); }
+html[data-theme] .app-shell .programme-hero { background: linear-gradient(120deg,var(--ceed-raised),var(--ceed-panel)); color: var(--ceed-text); border-color: var(--ceed-line); }
+html[data-theme] .app-shell .section-heading h2,html[data-theme] .app-shell .programme-hero h2 { font-weight: 500; font-size: 25px; }
+html[data-theme] .app-shell .brand-text strong { font-weight: 500; }
+html[data-theme] .app-shell .dashboard-date h2 { font-size: 17px; font-weight: 500; }
+html[data-theme] .app-shell .nav-item { font-weight: 450; }
+html[data-theme] .app-shell .quick-start-card { border-color: var(--ceed-line); background: transparent; border-radius: 14px; }
+html[data-theme] .app-shell .quick-start-image { background: var(--ceed-raised); color: var(--ceed-accent); border-radius: 12px; }
+html[data-theme] .app-shell .quick-start-card strong { font-weight: 500; }
+html[data-theme] .app-shell .progress-fill { background: var(--ceed-accent); }
+html[data-theme] .app-shell .recovery-value,html[data-theme] .app-shell .hydration-value { font-weight: 500; }
+html[data-theme] .app-shell .mobile-nav { bottom: 12px; left: 12px; right: 12px; width: auto; border: 1px solid var(--ceed-line); border-radius: 20px; box-shadow: var(--ceed-shadow); }
+@media(max-width: 760px) {
+  html[data-theme] .app-shell .content-area { padding: 24px 20px 100px; }
+  html[data-theme] .app-shell .dashboard-hero h1 { font-size: 35px; }
+  html[data-theme] .app-shell .page-stack { gap: 24px; }
+  html[data-theme] .app-shell .stats-grid { gap: 10px; }
+  html[data-theme] .app-shell .stat-card { padding: 16px; border-radius: 16px; }
+  html[data-theme] .app-shell .panel { padding: 20px; }
+  html[data-theme] .app-shell .topbar-actions { gap: 8px; }
+}

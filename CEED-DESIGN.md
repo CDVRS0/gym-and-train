@@ -19,3 +19,5 @@ Planner and training records continue using existing cloud sync.
 This work is on an isolated feature branch and is presented in Preview first.
 
 The follow-up layout pass uses CEED's open greeting area instead of the illustrated hero, limits the content width, softens type weights, and replaces remaining hardcoded dark statistic and programme surfaces. Training programmes, logs, timers, cloud history and AI Coach remain on the existing components.
+
+The shared draggable lavender character opens the existing quick training coach in a compact panel. It uses saved cloud training records and retains its reply when the panel is closed. Its programme suggestions remain read-only. Unique form IDs keep the coach tab and floating coach accessible when both have been opened. Voice is not activated in this phase.

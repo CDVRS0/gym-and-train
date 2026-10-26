@@ -1,4 +1,5 @@
 // This app forwards to CDVRS AI; it never calls a model provider itself.
+export const maxDuration = 120;
 export async function POST(request) {
   const origin = process.env.CDVRS_AI_URL;
   if (!origin) return Response.json({ error: 'Set the server-side CDVRS_AI_URL to connect your central AI backend.' }, { status: 503 });
@@ -7,10 +8,11 @@ export async function POST(request) {
   try {
     const target = new URL('/api/training/coach', origin);
     if (target.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(target.hostname))) throw new Error('HTTPS is required.');
-    const body = await request.json();
-    if (typeof body.message !== 'string' || !body.message.trim() || body.message.length > 8000) return Response.json({ error: 'Enter a message of up to 8,000 characters.' }, { status: 400 });
-    const response = await fetch(target, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authorization }, body: JSON.stringify({ message: body.message }), cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(120000) });
+    let body;
+    try { body = await request.json(); } catch { return Response.json({ error: 'Enter a valid coach request.' }, { status: 400 }); }
+    if (typeof body?.message !== 'string' || !body.message.trim() || body.message.length > 8000) return Response.json({ error: 'Enter a message of up to 8,000 characters.' }, { status: 400 });
+    const response = await fetch(target, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authorization }, body: JSON.stringify({ message: body.message }), cache: 'no-store', redirect: 'error', signal: AbortSignal.any([request.signal, AbortSignal.timeout(110000)]) });
     const data = await response.json();
     return Response.json(data, { status: response.status, headers: { 'Cache-Control': 'no-store' } });
-  } catch { return Response.json({ error: 'Could not reach CDVRS AI. Check the backend URL and try again.' }, { status: 503 }); }
+  } catch { return Response.json({ error: 'Could not reach CEED. Please try again; your training records were not changed.' }, { status: 503 }); }
 }

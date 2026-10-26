@@ -1,4 +1,5 @@
 'use client';
+import CeedAssistantLauncher from '../components/ceed/CeedAssistantLauncher';
 
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -2645,6 +2646,7 @@ export default function App() {
       </main>
 
 
+      <CeedAssistantLauncher title="CEED · Training coach"><TrainingCoach /></CeedAssistantLauncher>
       <div style={{ display: timerOpen ? undefined : 'none' }}>
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setTimerOpen(false);

@@ -9,3 +9,59 @@
 @media(max-width:760px){.tabs{gap:15px;overflow:auto}.tabs button{white-space:nowrap}.waterActions button{flex:1;min-width:72px}.waterActions button.ghost{margin-left:0;flex:0 0 auto}}
 
 .sessionTimer{background:var(--accent);color:#07101a;border-radius:18px;padding:17px 20px;display:flex;align-items:center;justify-content:space-between;margin:0 0 18px}.sessionTimer strong{font:700 30px 'Space Grotesk';display:block;margin-top:2px}.sessionTimer small{display:block;font-size:9px;font-weight:700;letter-spacing:.08em;opacity:.65;margin-top:2px}.sessionTimer .eyebrow{color:#07101a}.sessionTimer .timerBtns button{background:rgba(0,0,0,.09)}.sessionTimer .timerBtns button:last-child{background:#07101a;color:#fff}.quickGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:14px 0}.quickGrid label{font-size:10px;color:var(--muted)}.quickGrid input,.quickGrid select{display:block;width:100%;margin-top:5px;background:#0d1011;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px}.supersetTag{font-size:8px;color:var(--accent);border:1px solid #22558f;border-radius:5px;padding:2px 4px;vertical-align:middle;margin-left:5px}.exercise.done{border-color:#22558f}@media(max-width:760px){.sessionTimer{gap:12px;align-items:flex-start}.sessionTimer .timerBtns{flex-wrap:wrap;justify-content:flex-end}.quickGrid{grid-template-columns:1fr}.sessionTimer strong{font-size:26px}}
+
+/* Isolated coach styles; existing training controls keep their behaviour. */
+.training-coach { max-width: 950px; margin: 0 auto; padding: 12px 0; }
+.training-coach h2 { font-size: 30px; letter-spacing: -.04em; }
+.training-coach .muted { color: #8592a8; line-height: 1.8; font-size: 13px; }
+.training-coach .eyebrow { color: #6da5ff; font-size: 10px; letter-spacing: .15em; }
+.training-coach .coach-prompts { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0; }
+.training-coach .coach-prompts button { font-size: 12px; text-align: left; white-space: normal; }
+.training-coach form { display: grid; gap: 14px; }
+.training-coach form label { color: #a1b4cf; font-size: 12px; }
+.training-coach textarea { width: 100%; min-height: 110px; background: #101722; color: #f3f6fc; border: 1px solid #334966; border-radius: 12px; padding: 16px; font: inherit; resize: vertical; }
+.training-coach textarea:focus-visible { outline: 2px solid #3984ff; outline-offset: 3px; }
+.training-coach form button { justify-self: start; }
+.coach-answer { margin: 26px 0; padding: 25px; border: 1px solid #284468; border-radius: 14px; background: #101722; }
+.coach-answer h3 { color: #6da5ff; }
+.coach-answer p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.9; font-size: 14px; }
+.coach-answer small { color: #8592a8; }
+.coach-error { color: #ffb4b4; }
+.training-coach .coach-prompts button { background: #141e2d; color: #b7c9e5; border: 1px solid #30435e; }
+.training-coach .coach-prompts button:hover { background: #1c2c43; border-color: #527eb6; }
+@media (max-width: 760px) { .training-coach { padding-bottom: 38px; } }
+
+/* CEED GYM shares CEED's open workspace and quiet, translucent surfaces. */
+html[data-theme] .app-shell .content-area { max-width: 1120px; padding: 36px 40px; }
+html[data-theme] .app-shell .page-stack { gap: 28px; }
+html[data-theme] .app-shell .dashboard-hero { min-height: 0; padding: 20px 0 6px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+html[data-theme] .app-shell .dashboard-hero-content { padding: 0; max-width: 680px; }
+html[data-theme] .app-shell .dashboard-hero .eyebrow { color: var(--ceed-muted); font-weight: 450; font-size: 9px; }
+html[data-theme] .app-shell .dashboard-hero h1 { color: var(--ceed-text); font-weight: 450; font-size: clamp(32px, 3.7vw, 46px); line-height: 1.1; letter-spacing: -.055em; margin: 22px 0 16px; }
+html[data-theme] .app-shell .dashboard-hero h1 span { color: var(--ceed-accent); }
+html[data-theme] .app-shell .dashboard-hero p { font-size: 13px; max-width: 460px; }
+html[data-theme] .app-shell .button-light { background: var(--ceed-solid); color: var(--ceed-on-accent); border-color: transparent; border-radius: 12px; }
+html[data-theme] .app-shell .panel,html[data-theme] .app-shell .stat-card,html[data-theme] .app-shell .exercise-card { background: var(--ceed-panel); color: var(--ceed-text); border-color: var(--ceed-line); border-radius: 20px; box-shadow: none; }
+html[data-theme] .app-shell .stat-card-accent { background: var(--ceed-raised); border-color: var(--ceed-line); }
+html[data-theme] .app-shell .stat-value { color: var(--ceed-text); font-weight: 500; }
+html[data-theme] .app-shell .stat-top,html[data-theme] .app-shell .stat-detail { color: var(--ceed-muted); }
+html[data-theme] .app-shell .programme-hero { background: linear-gradient(120deg,var(--ceed-raised),var(--ceed-panel)); color: var(--ceed-text); border-color: var(--ceed-line); }
+html[data-theme] .app-shell .section-heading h2,html[data-theme] .app-shell .programme-hero h2 { font-weight: 500; font-size: 25px; }
+html[data-theme] .app-shell .brand-text strong { font-weight: 500; }
+html[data-theme] .app-shell .dashboard-date h2 { font-size: 17px; font-weight: 500; }
+html[data-theme] .app-shell .nav-item { font-weight: 450; }
+html[data-theme] .app-shell .quick-start-card { border-color: var(--ceed-line); background: transparent; border-radius: 14px; }
+html[data-theme] .app-shell .quick-start-image { background: var(--ceed-raised); color: var(--ceed-accent); border-radius: 12px; }
+html[data-theme] .app-shell .quick-start-card strong { font-weight: 500; }
+html[data-theme] .app-shell .progress-fill { background: var(--ceed-accent); }
+html[data-theme] .app-shell .recovery-value,html[data-theme] .app-shell .hydration-value { font-weight: 500; }
+html[data-theme] .app-shell .mobile-nav { bottom: 12px; left: 12px; right: 12px; width: auto; border: 1px solid var(--ceed-line); border-radius: 20px; box-shadow: var(--ceed-shadow); }
+@media(max-width: 760px) {
+  html[data-theme] .app-shell .content-area { padding: 24px 20px 100px; }
+  html[data-theme] .app-shell .dashboard-hero h1 { font-size: 35px; }
+  html[data-theme] .app-shell .page-stack { gap: 24px; }
+  html[data-theme] .app-shell .stats-grid { gap: 10px; }
+  html[data-theme] .app-shell .stat-card { padding: 16px; border-radius: 16px; }
+  html[data-theme] .app-shell .panel { padding: 20px; }
+  html[data-theme] .app-shell .topbar-actions { gap: 8px; }
+}

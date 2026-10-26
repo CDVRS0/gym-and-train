@@ -181,7 +181,7 @@ export default function GymCloudSync({ onSync }) {
           </button>
           <details style={{ marginTop: 16 }}>
             <summary>Set or change password</summary>
-            <p>Keep this existing account and its workout data. This password also works for your shared CDVRS AI account.</p>
+            <p>Keep this existing account and its workout data. This password also works for your shared CEED account.</p>
             <form onSubmit={savePassword}>
               <label htmlFor="gym-new-password">New password</label>
               <input id="gym-new-password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={e => setPassword(e.target.value)} style={{ display: 'block', marginBottom: 10 }} />

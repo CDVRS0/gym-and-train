@@ -1,4 +1,5 @@
 'use client';
+import {CeedLogo} from '../components/ceed/CeedLogo';
 import CeedAssistantLauncher from '../components/ceed/CeedAssistantLauncher';
 
 
@@ -2528,7 +2529,7 @@ export default function App() {
   if (!loaded) {
     return (
       <main className="app-loading">
-        <div className="loading-mark"><Dumbbell size={26} /></div>
+        <div className="loading-mark"><CeedLogo/></div>
         <span>Loading CEED GYM</span>
       </main>
     );
@@ -2537,6 +2538,7 @@ export default function App() {
 
   if (!cloudUser || !cloudReady || syncStatus === 'error' || syncStatus === 'offline') {
     return <main className="app-shell" style={{ padding: 24 }}><TrainingStyles /><div className="ceed-login-theme"><ThemeControl /></div><section className="panel cloud-account-gate" style={{ maxWidth: 620, margin: '40px auto', padding: 24 }}>
+      <div className="brand"><CeedLogo/><div><strong>CEED GYM</strong></div></div>
       <h2>{!cloudUser ? 'Sign in to CEED GYM' : cloudReady ? 'Cloud connection needs attention' : 'Loading cloud history'}</h2>
       <p>CEED GYM uses your cloud history and saves changes automatically. An internet connection is required.</p>
       {errorMessage && <p role="alert">{errorMessage}</p>}
@@ -2552,14 +2554,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <span className="ceed-emblem" aria-hidden="true" />
-          <div className="brand-text">
-            <strong>CEED <span>GYM</span></strong>
-            <small>MOVE AT YOUR OWN PACE</small>
-          </div>
-        </div>
-
+        <div className="gym-brand-space" aria-hidden="true"/>
 
         <div className="sidebar-section-label">WORKSPACE</div>
 
@@ -2646,7 +2641,7 @@ export default function App() {
       </main>
 
 
-      <CeedAssistantLauncher title="CEED · Training coach"><TrainingCoach /></CeedAssistantLauncher>
+      <CeedAssistantLauncher className="gym-brand-launcher" product="GYM" tagline="MOVE AT YOUR OWN PACE" title="CEED · Training coach"><TrainingCoach /></CeedAssistantLauncher>
       <div style={{ display: timerOpen ? undefined : 'none' }}>
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setTimerOpen(false);
